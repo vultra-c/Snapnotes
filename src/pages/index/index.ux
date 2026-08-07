@@ -7,26 +7,24 @@
       <text static style="line-height: 36px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.4); text-align: center; margin-top: 16px;">没有文件</text>
     </div>
 
-    <!-- 列表 -->
-    <list class="list" id="homeList" if="{{allItems.length > 0}}">
-      <list-item for="{{visibleItems}}" tid="id" class="item" type="folder">
-        <div class="item-touch"
-          @click="onItemClick($item)"
-          @longpress="onItemLongPress($item)"
-          @touchstart="onItemTouchStart($item)"
-          @touchmove="onItemTouchMove"
-          @touchend="onItemTouchEnd"
-          @touchcancel="onItemTouchEnd">
-          <div class="item-content">
-            <text class="itemtext">{{$item.name}}</text>
-            <text class="itemtext2">{{$item.subtitle}}</text>
-          </div>
-          <img static src="/common/images/enter.png" class="arrow" />
+    <!-- 滚动列表（用 scroll+div 替代 list+list-item，使 longpress/touch 事件可触发） -->
+    <scroll class="list" scroll-y="true" scroll-x="false" if="{{allItems.length > 0}}">
+      <div for="{{visibleItems}}" class="item"
+        @click="onItemClick($idx)"
+        @longpress="onItemLongPress($idx)"
+        @touchstart="onItemTouchStart($idx)"
+        @touchmove="onItemTouchMove"
+        @touchend="onItemTouchEnd"
+        @touchcancel="onItemTouchEnd">
+        <div class="item-content">
+          <text class="itemtext">{{$item.name}}</text>
+          <text class="itemtext2">{{$item.subtitle}}</text>
         </div>
-      </list-item>
+        <img static src="/common/images/enter.png" class="arrow" />
+      </div>
       <!-- 底部占位：防止悬浮按钮遮挡最后几条科目信息 -->
-      <list-item type="footer" class="list-padding"></list-item>
-    </list>
+      <div class="list-padding"></div>
+    </scroll>
 
     <!-- 遮罩层 -->
     <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0; width: 336px; height: 86px;" />
@@ -192,14 +190,16 @@ export default {
   },
 
   // ---- 长按检测：@longpress 原生事件 + touch 事件双保险 ----
-  onItemLongPress(item) {
+  onItemLongPress(idx) {
+    var item = this.visibleItems[idx]
     if (this.isNavigating) return
     if (!item) return
     this._lpTriggered = true
     this._doLongPress(item)
   },
 
-  onItemTouchStart(item) {
+  onItemTouchStart(idx) {
+    var item = this.visibleItems[idx]
     this._lpTriggered = false
     var itemId = item ? item.id : ''
     this._lpItemId = itemId
@@ -231,7 +231,8 @@ export default {
   },
 
   // 点击：正常导航（长按刚触发时跳过本次 click）
-  onItemClick(item) {
+  onItemClick(idx) {
+    var item = this.visibleItems[idx]
     if (this._lpTriggered) {
       this._lpTriggered = false
       return
@@ -319,13 +320,6 @@ export default {
 
 <style>
   @import '../../common/style.css';
-  .item-touch {
-    width: 100%;
-    height: 100%;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-  }
   .list-padding {
     height: 90px;
     width: 100%;

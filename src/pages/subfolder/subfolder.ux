@@ -12,30 +12,28 @@
       <text static style="font-size: 24px; color: rgba(255,255,255,0.6);">加载中...</text>
     </div>
 
-    <!-- 列表 -->
-    <list class="list" if="{{visibleItems.length > 0}}" id="subList" @scrollbottom="loadMore">
-      <list-item for="{{visibleItems}}" tid="id" class="item" type="item">
-        <div class="item-touch"
-          @click="onItemClick($item)"
-          @longpress="onItemLongPress($item)"
-          @touchstart="onItemTouchStart($item)"
-          @touchmove="onItemTouchMove"
-          @touchend="onItemTouchEnd"
-          @touchcancel="onItemTouchEnd">
-          <div class="item-content">
-            <text class="itemtext">{{$item.name}}</text>
-            <text class="itemtext2">{{$item.subtitle}}</text>
-          </div>
-          <img static src="/common/images/enter.png" class="arrow" />
+    <!-- 滚动列表（用 scroll+div 替代 list+list-item，使 longpress/touch 事件可触发） -->
+    <scroll class="list" scroll-y="true" scroll-x="false" if="{{visibleItems.length > 0}}" @scrollbottom="loadMore">
+      <div for="{{visibleItems}}" class="item"
+        @click="onItemClick($idx)"
+        @longpress="onItemLongPress($idx)"
+        @touchstart="onItemTouchStart($idx)"
+        @touchmove="onItemTouchMove"
+        @touchend="onItemTouchEnd"
+        @touchcancel="onItemTouchEnd">
+        <div class="item-content">
+          <text class="itemtext">{{$item.name}}</text>
+          <text class="itemtext2">{{$item.subtitle}}</text>
         </div>
-      </list-item>
+        <img static src="/common/images/enter.png" class="arrow" />
+      </div>
       <!-- 触底加载指示 -->
-      <list-item type="loading-more" class="loading-more" if="{{knowledgeSubject && visibleItems.length < totalCount}}">
+      <div class="loading-more" if="{{knowledgeSubject && visibleItems.length < totalCount}}">
         <text class="loading-more__text" static>正在加载...</text>
-      </list-item>
+      </div>
       <!-- 底部占位 -->
-      <list-item type="footer" class="list-padding"></list-item>
-    </list>
+      <div class="list-padding"></div>
+    </scroll>
 
     <!-- 遮罩层 -->
     <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0; width: 336px; height: 86px;" />
@@ -251,14 +249,16 @@ export default {
   },
 
   // ---- 长按检测：@longpress 原生事件 + touch 事件双保险 ----
-  onItemLongPress(item) {
+  onItemLongPress(idx) {
+    var item = this.visibleItems[idx]
     if (this.isNavigating) return
     if (!item) return
     this._lpTriggered = true
     this._doLongPress(item)
   },
 
-  onItemTouchStart(item) {
+  onItemTouchStart(idx) {
+    var item = this.visibleItems[idx]
     this._lpTriggered = false
     var itemId = item ? item.id : ''
     this._lpItemId = itemId
@@ -290,7 +290,8 @@ export default {
   },
 
   // 点击：正常导航
-  onItemClick(item) {
+  onItemClick(idx) {
+    var item = this.visibleItems[idx]
     if (this._lpTriggered) {
       this._lpTriggered = false
       return
@@ -403,13 +404,6 @@ export default {
 
 <style>
   @import '../../common/style.css';
-  .item-touch {
-    width: 100%;
-    height: 100%;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-  }
   .list-padding {
     height: 90px;
     width: 100%;

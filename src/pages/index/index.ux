@@ -23,9 +23,10 @@
       <list-item type="footer" class="list-padding"></list-item>
     </list>
 
-    <!-- 顶部栏（hd.png 背景 + mask_up.png 渐变遮罩，参考喵喵电子书样式） -->
+    <!-- 遮罩层（放在最底部，作为背景层） -->
+    <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0;" />
+    <!-- 顶部栏背景 -->
     <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
-    <img static src="/common/images/mask_up.png" style="position: absolute; top: 0px; left: 0px; width: 336px; height: 160px;" />
     <img static src="/common/images/back.png" @click="exitApp" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
     <img static src="/common/images/more.png" @click="goSettings" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />
     <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>

@@ -14,17 +14,20 @@
 
     <!-- 列表 -->
     <list class="list" if="{{visibleItems.length > 0}}" id="subList" @scrollbottom="loadMore">
-      <list-item for="{{visibleItems}}" tid="id" class="item" type="item"
-        @click="onItemClick($item)"
-        @touchstart="onItemTouchStart($item)"
-        @touchmove="onItemTouchMove"
-        @touchend="onItemTouchEnd"
-        @touchcancel="onItemTouchEnd">
-        <div class="item-content">
-          <text class="itemtext">{{$item.name}}</text>
-          <text class="itemtext2">{{$item.subtitle}}</text>
+      <list-item for="{{visibleItems}}" tid="id" class="item" type="item">
+        <div class="item-touch"
+          @click="onItemClick($item)"
+          @longpress="onItemLongPress($item)"
+          @touchstart="onItemTouchStart($item)"
+          @touchmove="onItemTouchMove"
+          @touchend="onItemTouchEnd"
+          @touchcancel="onItemTouchEnd">
+          <div class="item-content">
+            <text class="itemtext">{{$item.name}}</text>
+            <text class="itemtext2">{{$item.subtitle}}</text>
+          </div>
+          <img static src="/common/images/enter.png" class="arrow" />
         </div>
-        <img static src="/common/images/enter.png" class="arrow" />
       </list-item>
       <!-- 触底加载指示 -->
       <list-item type="loading-more" class="loading-more" if="{{knowledgeSubject && visibleItems.length < totalCount}}">
@@ -65,7 +68,7 @@ export default {
     totalCount: 0,
     // 手动长按检测
     _lpTimer: null,
-    _lpItem: null,
+    _lpItemId: '',
     _lpTriggered: false
   },
   protected: {
@@ -247,15 +250,23 @@ export default {
     this._loadMoreChunk()
   },
 
-  // ---- 手动长按检测 ----
+  // ---- 长按检测：@longpress 原生事件 + touch 事件双保险 ----
+  onItemLongPress(item) {
+    if (this.isNavigating) return
+    if (!item) return
+    this._lpTriggered = true
+    this._doLongPress(item)
+  },
+
   onItemTouchStart(item) {
     this._lpTriggered = false
-    this._lpItem = item
+    var itemId = item ? item.id : ''
+    this._lpItemId = itemId
     var self = this
     this._lpTimer = setTimeout(function() {
-      if (self._lpItem === item) {
+      if (self._lpItemId === itemId) {
         self._lpTriggered = true
-        self._lpItem = null
+        self._lpItemId = ''
         self._lpTimer = null
         self._doLongPress(item)
       }
@@ -267,7 +278,7 @@ export default {
       clearTimeout(this._lpTimer)
       this._lpTimer = null
     }
-    this._lpItem = null
+    this._lpItemId = ''
   },
 
   onItemTouchEnd() {
@@ -275,7 +286,7 @@ export default {
       clearTimeout(this._lpTimer)
       this._lpTimer = null
     }
-    this._lpItem = null
+    this._lpItemId = ''
   },
 
   // 点击：正常导航
@@ -392,6 +403,13 @@ export default {
 
 <style>
   @import '../../common/style.css';
+  .item-touch {
+    width: 100%;
+    height: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
   .list-padding {
     height: 90px;
     width: 100%;

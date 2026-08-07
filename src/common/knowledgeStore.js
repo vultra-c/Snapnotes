@@ -283,6 +283,8 @@ function getAllItems() {
         title: it.title,
         desc: it.desc,
         points: it.points,
+        raw: it.raw || '',
+        formulas: it.formulas || [],
         subjectName: name
       })
     }

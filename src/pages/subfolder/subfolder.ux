@@ -31,7 +31,7 @@
     </list>
 
     <!-- 遮罩层：放在 list 之后、按钮之前（参考喵喵电子书） -->
-    <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0;" />
+    <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0; width: 336px;" />
     <!-- 顶部按钮（在遮罩之上，保持可点击） -->
     <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
     <img static src="/common/images/more.png" @click="goSettings" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />

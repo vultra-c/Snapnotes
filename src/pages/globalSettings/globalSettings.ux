@@ -66,7 +66,10 @@
           <text class="itemtext" static>知识点管理</text>
           <text class="itemtext2" static>导入/删除知识点</text>
         </div>
-        <img static src="/common/images/enter.png" class="arrow" />
+        <div style="flex-direction: row; align-items: center;">
+          <text style="font-size: 22px; font-weight: bold; color: #7899BB; background-color: rgba(120,153,187,0.12); border: 1px solid rgba(120,153,187,0.3); border-radius: 10px; padding: 2px 10px; line-height: 28px;">{{importedCount}}</text>
+          <img static src="/common/images/enter.png" class="arrow" />
+        </div>
       </list-item>
 
       <!-- 存储管理分区 -->
@@ -130,7 +133,8 @@ export default {
     contentStorageSize: '加载中...',
     versionName: '1.0.1',
     appName: '闪念小抄',
-    developer: 'Vultra 和 文华逸洋'
+    developer: 'Vultra 和 文华逸洋',
+    importedCount: 0
   },
 
   onInit() {
@@ -296,15 +300,19 @@ export default {
         const subjects = store.getSubjects()
         let builtin = 0
         let total = 0
+        let imported = 0
         for (let i = 0; i < subjects.length; i++) {
           const s = subjects[i]
           total += s.count
           if (!s.imported) {
             builtin += s.count
+          } else {
+            imported++
           }
         }
         this.builtinCount = builtin.toString()
         this.totalCount = total.toString()
+        this.importedCount = imported
       } else {
         this.builtinCount = '0'
         this.totalCount = '0'

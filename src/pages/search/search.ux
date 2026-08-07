@@ -1,26 +1,11 @@
 <import name="input-method" src="../../components/InputMethod/InputMethod.ux"></import>
 
 <template>
-  <div class="container">
-
-    <img class="leftButton top" src="/common/images/back.png" @click="goBack" static />
-    <text class="time">{{ currentTime }}</text>
-    <text class="title" static><span>搜索</span></text>
-
-    <div style="height: 6px;"></div>
-
-    <!-- 搜索框 -->
-    <div class="search-bar">
-      <div class="search-bar__inner" @click="toggleKeyboard">
-        <text class="search-bar__text">{{ textValue || '搜索知识点...' }}</text>
-      </div>
-    </div>
+  <div class="page" style="flex-direction: column;">
 
     <!-- 搜索结果列表（键盘显示时缩小高度，给键盘腾出空间） -->
-    <!-- scrollbottom 触底增量渲染：命中结果多时（如空泛关键词 150 条）不一次性全建 DOM，
-         首批渲染 12 条，触底 +12。首屏节点受控，滑动不掉帧（vela文档.md:4365 同款推荐）。 -->
     <scroll class="box {{ !hideKeyboard ? 'box--with-keyboard' : '' }}" scroll-x="false" scroll-y="true" bounces="true" @scrollbottom="loadMore">
-      <!-- 加载中占位（首帧先就位，避免进页瞬间预算 150 条 haystack 卡顿） -->
+      <!-- 加载中占位 -->
       <div class="search-loading" if="{{!ready}}">
         <text class="search-loading__text" static>加载中...</text>
       </div>
@@ -42,7 +27,22 @@
       <div class="padding"></div>
     </scroll>
 
-    <!-- 输入法键盘：组件自带 position:absolute;bottom:0 定位，直接放在 container 下即可 -->
+    <!-- 遮罩层：覆盖列表顶部形成渐变过渡，防止结果与上方UI重合 -->
+    <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0; width: 336px;" />
+
+    <!-- 顶部栏（在遮罩之上，保持可点击） -->
+    <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
+    <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{ currentTime }}</text>
+    <text static style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center;">搜索</text>
+
+    <!-- 搜索框（在遮罩之上，固定位置不受列表滚动影响） -->
+    <div class="search-bar" style="position: absolute; left: 0px; top: 86px; width: 336px; padding: 0 12px;">
+      <div class="search-bar__inner" @click="toggleKeyboard">
+        <text class="search-bar__text">{{ textValue || '搜索知识点...' }}</text>
+      </div>
+    </div>
+
+    <!-- 输入法键盘 -->
     <input-method
       hide="{{hideKeyboard}}"
       keyboardtype="QWERTY"
@@ -64,46 +64,37 @@ export default {
     textValue: '',
     hideKeyboard: true,
     searchResults: [],
-    renderedResults: [],  // searchResults 的前缀切片（触底增量渲染，DOM 数量受控）
-    renderedCount: 12,    // 已渲染条数（首批 12，触底每次 +12）
+    renderedResults: [],
+    renderedCount: 12,
     allItems: [],
     hasSearched: false,
     ready: false,
     currentTime: '00:00',
-    vibrateMode: ''        // 键盘震动模式(''/short/long),同步 $def 全局设置传给 InputMethod
+    vibrateMode: ''
   },
 
   onInit() {
     this.__unsubClock = onTimeChange((t) => { this.currentTime = t })
-    // 震动模式:读 $def 缓存(app 启动已从 storage 读回),直接绑 InputMethod.vibratemode
     this.vibrateMode = this.$app.$def.getKeyboardVibrateMode()
-    // 进页即构建 allItems（含预算好的 haystack 缓存），但不渲染。
-    // searchResults 保持空，首屏只画占位，避免进页瞬间渲染 150 张卡片的卡顿。
-    // haystack 在此预算一次：把学科名/标题/描述/知识要点正文拼成单串并转小写，
-    // 之后每次搜索只做 indexOf，不再每键重新 join + toLowerCase（这是输入卡顿的根因）。
-    // 数据源走 $app.$def.store.getAllItems（内置 + 用户导入合并后的全量扁平条目）。
-    // ready=false 让 scroll 内只画「加载中」占位，把 150 条预算推到下一帧，
-    // 标题/搜索框/背景先就位，进页顺滑（同 detail/knowledge 范式）。
     setTimeout(() => {
       const items = this.$app.$def.store.getAllItems()
       const all = []
-      // 分片构建：全部条目 join+toLowerCase 是长任务（语文等大 desc 条目很多），一次性执行
-      // 会占住主线程造成进页后一段冻结。每片 30 条，片间 setTimeout 让出主线程渲染，
-      // 构建期间显示「加载中」占位（ready 保持 false）。
       const CHUNK = 30
       let i = 0
       const step = () => {
         const end = Math.min(i + CHUNK, items.length)
         for (; i < end; i++) {
           const it = items[i]
+          // haystack 包含 raw 字段（原文），扩大搜索覆盖范围
           const haystack = (
             it.subjectName + '\n' +
             it.title + '\n' +
             it.desc + '\n' +
-            (it.points || []).join('\n')
+            (it.points || []).join('\n') + '\n' +
+            (it.raw || '')
           ).toLowerCase()
           all.push({
-            id: i,               // 稳定唯一 id，供结果列表 for tid 复用(vela文档.md:7184)
+            id: i,
             title: it.title,
             desc: it.desc,
             points: it.points,
@@ -154,8 +145,6 @@ export default {
     }
   },
 
-  // 防抖：连续敲键只在停顿后搜一次，避免每键全量扫描；即时性靠 220ms 平衡。
-  // 保证同一时间最多一个定时器，新按键会取消上一个未触发的搜索。
   scheduleSearch() {
     if (this.__searchTimer) {
       clearTimeout(this.__searchTimer)
@@ -166,7 +155,6 @@ export default {
     }, 220)
   },
 
-  // 取消在途的触底追加批次（新搜索/清空时调用，避免旧批次把结果追加进新结果集）
   _cancelLoadBatch() {
     this.__loadingMore = false
     if (this.__loadTimer) {
@@ -178,7 +166,6 @@ export default {
   doSearch() {
     const kw = this.textValue.toLowerCase().trim()
     if (!kw) {
-      // 关键词清空：保持空态占位，不再回填全部卡片（回填会瞬间渲染 150 张）
       this._cancelLoadBatch()
       this.hasSearched = false
       this.searchResults = []
@@ -189,28 +176,21 @@ export default {
     const all = this.allItems
     const matched = []
     for (let i = 0; i < all.length; i++) {
-      // haystack 已在 onInit 预算缓存，这里只做 indexOf，无 join/toLowerCase 开销
       if (all[i].haystack.indexOf(kw) !== -1) {
         matched.push(all[i])
       }
     }
-    // 新搜索：取消上一轮触底批次，重置增量渲染计数，只渲染前 12 条；触底再追加
     this._cancelLoadBatch()
     this.searchResults = matched
     this.renderedCount = Math.min(12, matched.length)
     this._applyRenderedResults()
   },
 
-  // 增量渲染：renderedResults = searchResults 前缀切片（前 renderedCount 条）。
-  // 切片是前缀，onResultClick($idx) 的 $idx 在全量与切片一致，点击跳转不受影响。
   _applyRenderedResults() {
     const n = Math.min(this.renderedCount, this.searchResults.length)
     this.renderedResults = this.searchResults.slice(0, n)
   },
 
-  // scrollbottom 触底：防连发守卫 + 分批追加（同 knowledge 页范式）。
-  // 触底时 scrollbottom 会连续触发，同步整批 +12 会几帧内把结果全灌进 DOM（触底卡顿根因）。
-  // 合并同一波触底后按 BATCH 分片追加，片间让出主线程；新搜索会 _cancelLoadBatch 取消在途批次。
   loadMore() {
     if (this.__loadingMore) return
     const total = this.searchResults.length
@@ -248,79 +228,30 @@ export default {
 <style>
 @import '../../common/style.css';
 
-.container {
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: center;
+.page {
+  width: 336px;
+  height: 480px;
   background-color: #0A0A0C;
-  height: 100%;
-  width: 100%;
-  padding-top: 8px;        /* 对齐 index 顶部留白：title 垂直位置与其他页一致 */
-  position: relative;    /* 供键盘绝对定位锚定 */
-}
-
-.title {
   position: relative;
-  display: flex;
-  justify-items: center;
-  align-items: center;
-  font-size: 32px;
-  font-weight: bold;
-  color: rgba(255, 255, 255, 1);
 }
 
-.time {
-  position: relative;
-  top: 4px;
-  display: flex;
-  justify-items: center;
-  align-items: center;
-  font-size: 22px;
-  font-weight: bold;
-  color: rgba(255,255,255,0.5);
-}
-
-.leftButton {
-  position: absolute;
-  left: 16px;
-  top: 16px;
-  width: 72px;
-  height: 72px;
-}
-
+/* 搜索结果滚动区域 */
 .box {
-  position: relative;
-  width: 100%;
-  flex: 1;
+  position: absolute;
+  left: 0px;
+  top: 150px;
+  width: 336px;
+  height: 330px;
   flex-direction: column;
   align-items: center;
 }
 
 /* 键盘弹出时，搜索结果区缩到上半屏 */
 .box--with-keyboard {
-  height: 240px;
-  flex: 0 0 240px;
-}
-
-/* ---------- 输入法键盘浮层：绝对定位贴底 ---------- */
-.keyboard-layer {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 100%;
-  z-index: 999;
-}
-.padding {
-  height: 90px;
+  height: 180px;
 }
 
 /* ---------- 搜索框 ---------- */
-.search-bar {
-  width: 100%;
-  padding: 0 12px;
-  margin-bottom: 8px;
-}
-
 .search-bar__inner {
   width: 100%;
   height: 56px;
@@ -343,10 +274,6 @@ export default {
 .subject-item {
   padding: 0 12px;
   margin-bottom: 10px;
-}
-
-/* ---------- 结果卡片（覆盖 common/style.css 中 subject-item / subject-item__card 的固定高度） ---------- */
-.subject-item {
   height: auto !important;
 }
 
@@ -389,7 +316,6 @@ export default {
   font-size: 24px;
 }
 
-/* 进页加载占位（同 detail/knowledge 范式） */
 .search-loading {
   flex-direction: row;
   align-items: center;
@@ -401,5 +327,9 @@ export default {
 .search-loading__text {
   color: #98989E;
   font-size: 24px;
+}
+
+.padding {
+  height: 90px;
 }
 </style>

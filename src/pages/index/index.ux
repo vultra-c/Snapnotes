@@ -10,14 +10,18 @@
     <!-- 文件夹列表 -->
     <list class="list" id="homeList" if="{{allItems.length > 0}}">
       <list-item for="{{visibleItems}}" tid="id" class="item" type="folder"
-        @touchstart="onItemTouchStart($item)"
-        @touchend="onItemTouchEnd"
-        @touchmove="onItemTouchMove">
-        <div class="item-content">
-          <text class="itemtext">{{$item.name}}</text>
-          <text class="itemtext2">{{$item.subtitle}}</text>
+        @click="onItemClick($item)"
+        @swipe="onItemSwipe($item)">
+        <div class="item-main">
+          <div class="item-content">
+            <text class="itemtext">{{$item.name}}</text>
+            <text class="itemtext2">{{$item.subtitle}}</text>
+          </div>
+          <img static if="{{swipedId !== $item.id}}" src="/common/images/enter.png" class="arrow" />
         </div>
-        <img static src="/common/images/enter.png" class="arrow" />
+        <div if="{{swipedId === $item.id}}" class="swipe-delete" @click="onDeleteClick($item)">
+          <text class="swipe-delete-text">删除</text>
+        </div>
       </list-item>
       <!-- 底部占位：防止悬浮按钮遮挡最后几条科目信息 -->
       <list-item type="footer" class="list-padding"></list-item>
@@ -56,6 +60,7 @@ export default {
     allItems: [],
     visibleItems: [],
     isNavigating: false,
+    swipedId: '',
     _unsubReceive: null
   },
 
@@ -114,13 +119,7 @@ export default {
 
   onShow() {
     this.isNavigating = false
-    this._isLongPress = false
-    this._touchMoved = false
-    this._touchItem = null
-    if (this._longPressTimer) {
-      clearTimeout(this._longPressTimer)
-      this._longPressTimer = null
-    }
+    this.swipedId = ''
     if (appState.needRefreshList) {
       appState.needRefreshList = false
     }
@@ -128,10 +127,6 @@ export default {
   },
 
   onDestroy() {
-    if (this._longPressTimer) {
-      clearTimeout(this._longPressTimer)
-      this._longPressTimer = null
-    }
     if (this.__unsubClock) {
       offTimeChange(this.__unsubClock)
       this.__unsubClock = null
@@ -189,49 +184,32 @@ export default {
     })
   },
 
-  // === 纯touch事件实现点击/长按区分 ===
-  // touchstart：记录item，启动600ms定时器
-  onItemTouchStart(item) {
-    if (!item) return
-    this._touchItem = item
-    this._touchMoved = false
-    this._isLongPress = false
-    var that = this
-    this._longPressTimer = setTimeout(function() {
-      if (that.$valid && !that._touchMoved) {
-        that._isLongPress = true
-        that._doLongPress(item)
-      }
-    }, 600)
-  },
-
-  // touchmove：手指移动，取消长按定时器
-  onItemTouchMove() {
-    this._touchMoved = true
-    if (this._longPressTimer) {
-      clearTimeout(this._longPressTimer)
-      this._longPressTimer = null
+  // === 左滑出现删除按钮 ===
+  onItemSwipe(item, e) {
+    if (!e) return
+    if (e.direction === 'left') {
+      // 知识点科目：仅导入科目可删除
+      if (item.type === 'knowledge' && !item.imported) return
+      this.swipedId = item.id
     }
   },
 
-  // touchend：手指抬起，判断是点击还是已被长按处理
-  onItemTouchEnd() {
-    if (this._longPressTimer) {
-      clearTimeout(this._longPressTimer)
-      this._longPressTimer = null
-    }
-    if (!this._isLongPress && !this._touchMoved && this._touchItem) {
-      this._doClick(this._touchItem)
-    }
-    this._isLongPress = false
-    this._touchMoved = false
-    this._touchItem = null
-  },
-
-  // 点击逻辑
-  _doClick(item) {
+  // 点击列表项
+  onItemClick(item) {
     if (this.isNavigating) return
     if (!item) return
+
+    // 如果当前项已展开删除按钮，点击则收起
+    if (this.swipedId === item.id) {
+      this.swipedId = ''
+      return
+    }
+    // 如果有其他项展开了删除按钮，先收起
+    if (this.swipedId) {
+      this.swipedId = ''
+      return
+    }
+
     this.isNavigating = true
 
     if (item.type === 'knowledge') {
@@ -252,15 +230,14 @@ export default {
     }
   },
 
-  // 长按逻辑：跳转删除确认页
-  _doLongPress(item) {
-    if (this.isNavigating) return
+  // 点击删除按钮 → 跳转删除确认页
+  onDeleteClick(item) {
     if (!item) return
+    this.swipedId = ''
+    this.isNavigating = true
 
-    // 知识点科目：仅导入科目可长按删除
+    // 知识点科目删除
     if (item.type === 'knowledge') {
-      if (!item.imported) return
-      this.isNavigating = true
       router.push({
         uri: '/pages/deleteConfirm',
         params: {
@@ -271,7 +248,7 @@ export default {
       return
     }
 
-    this.isNavigating = true
+    // 文件夹/考点删除
     router.push({
       uri: '/pages/deleteConfirm',
       params: {
@@ -300,6 +277,11 @@ export default {
 
   onSwipe(e) {
     if (e.direction === 'right') {
+      // 如果有删除按钮展开，右滑先收起
+      if (this.swipedId) {
+        this.swipedId = ''
+        return
+      }
       app.terminate()
     }
   },

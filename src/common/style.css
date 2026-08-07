@@ -178,6 +178,28 @@
   color: rgba(255, 255, 255, 0.6);
 }
 
+/* ---------- 左滑删除按钮 ---------- */
+.item-main {
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+}
+.swipe-delete {
+  width: 100px;
+  height: 84px;
+  background-color: #D32F2F;
+  border-radius: 28px;
+  justify-content: center;
+  align-items: center;
+}
+.swipe-delete-text {
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+}
+
 /* ---------- 悬浮按钮（闪念小抄样式） ---------- */
 .fab {
   position: absolute;

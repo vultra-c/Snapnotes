@@ -7,35 +7,25 @@
       <text static style="line-height: 36px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.4); text-align: center; margin-top: 16px;">没有文件</text>
     </div>
 
-    <!-- 文件夹列表 -->
+    <!-- 文件夹列表（完全参照考点阅读器结构） -->
     <list class="list" id="homeList" if="{{allItems.length > 0}}">
-      <list-item for="{{visibleItems}}" tid="id" class="item" type="folder"
-        @click="onItemClick($item)">
-        <div class="swipe-wrap" 
-          @touchstart="onItemTouchStart($item, $event)"
-          @touchmove="onItemTouchMove($item, $event)"
-          @touchend="onItemTouchEnd($event)">
-          <div class="swipe-content" style="margin-left: {{swipedId === $item.id ? '-100px' : '0px'}};">
-            <div class="item-main">
-              <div class="item-content">
-                <text class="itemtext">{{$item.name}}</text>
-                <text class="itemtext2">{{$item.subtitle}}</text>
-              </div>
-              <img static src="/common/images/enter.png" class="arrow" />
-            </div>
-            <div class="swipe-delete" @click="onDeleteClick($item)">
-              <text class="swipe-delete-text">删除</text>
-            </div>
-          </div>
+      <list-item for="{{visibleItems}}" tid="id" class="item" type="folder" @click="onItemClick($item)">
+        <div class="item-content">
+          <text class="itemtext">{{$item.name}}</text>
+          <text class="itemtext2">{{$item.subtitle}}</text>
+        </div>
+        <div class="item-right">
+          <img static src="/common/images/bin.png" class="item-delete-icon" @click="onDeleteClick($item)" />
+          <img static src="/common/images/enter.png" class="arrow" />
         </div>
       </list-item>
-      <!-- 底部占位：防止悬浮按钮遮挡最后几条科目信息 -->
+      <!-- 底部占位 -->
       <list-item type="footer" class="list-padding"></list-item>
     </list>
 
     <!-- 遮罩层 -->
     <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0; width: 336px; height: 86px;" />
-    <!-- 顶部按钮（在遮罩之上，保持可点击） -->
+    <!-- 顶部按钮 -->
     <img static src="/common/images/back.png" @click="exitApp" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
     <img static src="/common/images/more.png" @click="goSettings" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />
     <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>
@@ -43,7 +33,6 @@
 
     <!-- 右下角全局搜索图标 -->
     <img static src="/common/images/search.png" @click="goSearch" class="fab fab--search" />
-
     <!-- 左下角 AI 聊天图标 -->
     <img static src="/common/images/chat.png" @click="goChat" class="fab fab--chat" />
 
@@ -66,7 +55,6 @@ export default {
     allItems: [],
     visibleItems: [],
     isNavigating: false,
-    swipedId: '',
     _unsubReceive: null
   },
 
@@ -125,7 +113,6 @@ export default {
 
   onShow() {
     this.isNavigating = false
-    this.swipedId = ''
     if (appState.needRefreshList) {
       appState.needRefreshList = false
     }
@@ -190,59 +177,10 @@ export default {
     })
   },
 
-  // === 纯touch事件左滑检测 ===
-  onItemTouchStart(item, e) {
-    if (!item) return
-    this._touchItem = item
-    this._touchMoved = false
-    this._touchSwiped = false
-    if (e && e.touches && e.touches[0]) {
-      this._touchStartX = e.touches[0].clientX
-    } else {
-      this._touchStartX = 0
-    }
-  },
-
-  onItemTouchMove(item, e) {
-    if (!e || !e.touches || !e.touches[0] || !this._touchItem) return
-    var dx = e.touches[0].clientX - this._touchStartX
-    this._touchMoved = true
-
-    // 左滑超过50px判定为左滑
-    if (dx < -50) {
-      this._touchSwiped = true
-      // 知识点科目：仅导入科目可删除
-      if (item.type === 'knowledge' && !item.imported) return
-      this.swipedId = item.id
-    }
-  },
-
-  onItemTouchEnd(e) {
-    if (!this._touchSwiped && !this._touchMoved && this._touchItem) {
-      // 没有滑动，视为点击
-      this.onItemClick(this._touchItem)
-    }
-    this._touchItem = null
-    this._touchMoved = false
-    this._touchSwiped = false
-  },
-
-  // 点击列表项
+  // 点击列表项 → 进入文件夹/考点
   onItemClick(item) {
     if (this.isNavigating) return
     if (!item) return
-
-    // 如果当前项已展开删除按钮，点击则收起
-    if (this.swipedId === item.id) {
-      this.swipedId = ''
-      return
-    }
-    // 如果有其他项展开了删除按钮，先收起
-    if (this.swipedId) {
-      this.swipedId = ''
-      return
-    }
-
     this.isNavigating = true
 
     if (item.type === 'knowledge') {
@@ -265,8 +203,8 @@ export default {
 
   // 点击删除按钮 → 跳转删除确认页
   onDeleteClick(item) {
+    if (this.isNavigating) return
     if (!item) return
-    this.swipedId = ''
     this.isNavigating = true
 
     // 知识点科目删除
@@ -310,11 +248,6 @@ export default {
 
   onSwipe(e) {
     if (e.direction === 'right') {
-      // 如果有删除按钮展开，右滑先收起
-      if (this.swipedId) {
-        this.swipedId = ''
-        return
-      }
       app.terminate()
     }
   },

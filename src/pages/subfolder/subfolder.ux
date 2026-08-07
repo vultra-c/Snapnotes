@@ -34,8 +34,8 @@
       <list-item type="footer" class="list-padding"></list-item>
     </list>
 
-    <!-- 遮罩层：CSS 渐变替代图片 -->
-    <div style="position: absolute; top: 0; left: 0; width: 336px; height: 70px; background: linear-gradient(to bottom, #000000 0%, rgba(0,0,0,0) 100%);"></div>
+    <!-- 遮罩层 -->
+    <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0; width: 336px; height: 86px;" />
     <!-- 顶部按钮（在遮罩之上，保持可点击） -->
     <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
     <img static src="/common/images/more.png" @click="goSettings" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />

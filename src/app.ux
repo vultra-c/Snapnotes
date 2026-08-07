@@ -1,0 +1,891 @@
+<script>
+import storage from '@system.storage'
+import file from '@system.file'
+import interconnect from '@system.interconnect'
+import app from '@system.app'
+import device from '@system.device'
+import knowledgeStore from './common/knowledgeStore'
+import { base64ToArrayBuffer, sanitizeFileName } from './common/base64'
+import dataManager from './common/utils/dataManager.js'
+import interconnTree from './common/utils/interconnTree.js'
+
+// 用户数据持久化文件路径
+const USER_DATA_URI = 'internal://files/snapnotes_user_knowledge.json'
+const FORMULA_DIR_URI = 'internal://files/formulas/'
+const FORMULA_INDEX_URI = 'internal://files/formulas/index.json'
+const LEGACY_STORAGE_KEY = 'snapnotes_user_knowledge'
+
+// 握手协议常量（与安卓端 InterHandshake.kt 对齐）
+const HS_TAG = '__hs__'
+const HS_TIMEOUT_MS = 10000
+const HEARTBEAT_INTERVAL_MS = 5000
+const BAND_VERSION_CODE = 101
+
+export default {
+  // ====== Snapnotes 知识点数据中枢 ======
+  store: knowledgeStore,
+
+  // interconnect 接收单例
+  interconnect: null,
+  _connected: false,
+
+  // 接收事件订阅者数组
+  _receiveListeners: [],
+
+  // 握手/心跳定时器
+  hsTimeoutTimer: null,
+  hbTimer: null,
+
+  // file tag 分片重组状态机
+  fileState: null,
+
+  // chat tag AI 聊天
+  chatSession: null,
+  chatReplyState: null,
+  chatListeners: [],
+  chatWatchdog: null,
+
+  // 用户数据加载标志
+  userDataLoaded: false,
+
+  // 键盘震动模式
+  keyboardVibrateMode: '',
+  KEYBOARD_VIBRATE_KEY: 'snapnotes_keyboard_vibrate',
+
+  // 树同步模块回调
+  _treeCallback: null,
+  _treeEventListener: null,
+
+  // push.ux 文件传输回调兼容
+  _pushCallback: null,
+
+  // ====== 接收 JSON 知识点入口 ======
+  receiveImportedJSON(jsonStr) {
+    const s = (jsonStr != null) ? String(jsonStr) : ''
+    if (!s) return { ok: false, reason: 'empty' }
+    let parsed
+    try {
+      parsed = JSON.parse(s)
+    } catch (e) {
+      return { ok: false, reason: 'parse-fail' }
+    }
+    try {
+      knowledgeStore.mergeParsedInto(parsed)
+    } catch (e) {
+      return { ok: false, reason: 'merge-fail' }
+    }
+    const persistResult = this._persistCurrentUserData()
+    this._broadcastReceive({
+      kind: 'imported',
+      len: s.length,
+      persisted: persistResult.ok,
+      persistCode: persistResult.code
+    })
+    return { ok: true, len: s.length, persisted: persistResult.ok }
+  },
+
+  removeImportedSubject(name) {
+    const doomedFiles = this._collectSubjectFormulaFiles(name)
+    const removed = knowledgeStore.removeSubject(name)
+    if (!removed) return { ok: false, reason: 'not-found' }
+    const persistResult = this._persistCurrentUserData()
+    this._deleteFormulaFiles(doomedFiles)
+    const fiResult = this._persistFormulaIndex()
+    this._broadcastReceive({ kind: 'userdata-changed' })
+    return { ok: true, persisted: persistResult.ok && fiResult.ok }
+  },
+
+  _collectSubjectFormulaFiles(name) {
+    const idx = knowledgeStore.getUserFormulaIndex()
+    const prefix = name + '#'
+    const files = []
+    for (const key in idx) {
+      if (key.indexOf(prefix) === 0) {
+        if (idx[key] && idx[key].file) files.push(idx[key].file)
+      }
+    }
+    return files
+  },
+
+  _deleteFormulaFiles(files) {
+    if (!files || !files.length) return
+    for (let i = 0; i < files.length; i++) {
+      file.delete({
+        uri: FORMULA_DIR_URI + files[i],
+        success: () => {},
+        fail: () => {}
+      })
+    }
+    console.log('delete formula files: ' + files.length)
+  },
+
+  // ====== 键盘震动设置 ======
+  getKeyboardVibrateMode() {
+    return this.keyboardVibrateMode || ''
+  },
+  setKeyboardVibrateMode(mode) {
+    const m = (mode === 'short' || mode === 'long') ? mode : ''
+    this.keyboardVibrateMode = m
+    try {
+      storage.set({ key: this.KEYBOARD_VIBRATE_KEY, value: m })
+    } catch (e) {
+      console.log('keyboard vibrate persist FAIL ' + e)
+    }
+    return m
+  },
+  _loadKeyboardVibrateMode() {
+    storage.get({
+      key: this.KEYBOARD_VIBRATE_KEY,
+      success: (data) => {
+        if (data === 'short' || data === 'long') {
+          this.keyboardVibrateMode = data
+          this._broadcastReceive({ kind: 'vibrate-loaded' })
+        }
+      },
+      fail: () => {}
+    })
+  },
+
+  // ====== 事件订阅 ======
+  onReceive(cb) {
+    if (typeof cb !== 'function') return () => {}
+    this._receiveListeners.push(cb)
+    return () => {
+      const i = this._receiveListeners.indexOf(cb)
+      if (i >= 0) this._receiveListeners.splice(i, 1)
+    }
+  },
+  _broadcastReceive(evt) {
+    const list = this._receiveListeners
+    for (let i = 0; i < list.length; i++) {
+      try { list[i](evt) } catch (e) {}
+    }
+  },
+
+  // ====== 生命周期 ======
+  onCreate() {
+    // 1) 初始化考点阅读器数据管理（内置示例、文件树等）
+    try { dataManager.initData() } catch (e) {
+      console.log('dataManager.initData error: ' + e)
+    }
+
+    // 2) 读回已持久化的用户知识点数据
+    try { this._loadPersistedUserData() } catch (e) {
+      console.log('_loadPersistedUserData error: ' + e)
+    }
+
+    // 3) 公式图片目录 + 索引读回
+    try { this._setupFormulaStorage() } catch (e) {
+      console.log('_setupFormulaStorage error: ' + e)
+    }
+
+    // 4) 键盘震动设置读回
+    try { this._loadKeyboardVibrateMode() } catch (e) {
+      console.log('_loadKeyboardVibrateMode error: ' + e)
+    }
+
+    // 5) 挂 interconnect 接收（握手+文件+AI+树同步）
+    try { this._setupInterconnect() } catch (e) {
+      console.log('_setupInterconnect error: ' + e)
+    }
+
+    // 6) 初始化树同步模块
+    try { this._setupTreeSync() } catch (e) {
+      console.log('_setupTreeSync error: ' + e)
+    }
+
+    // 7) 设置全局兼容对象（push.ux 等页面依赖）
+    try { this._setupGlobals() } catch (e) {
+      console.log('_setupGlobals error: ' + e)
+    }
+
+    // 8) 读取常亮设置
+    try { this._loadKeepScreenOn() } catch (e) {
+      console.log('_loadKeepScreenOn error: ' + e)
+    }
+  },
+
+  onShow() {
+    try { this._loadKeepScreenOn() } catch (e) {
+      console.log('onShow _loadKeepScreenOn error: ' + e)
+    }
+  },
+
+  onDestroy() {
+    this._hsCleanup()
+    console.log("app destroyed")
+  },
+
+  _loadKeepScreenOn() {
+    // brightness 模块在部分设备（如小米手环10 Pro）上不可用，
+    // 移除 @system.brightness 导入以保证安装兼容性。
+    // 设置仍保留在 storage 中，未来设备支持时可恢复功能。
+    storage.get({
+      key: 'KD_KEEP_SCREEN_ON',
+      success: (data) => {
+        // brightness 暂不可用，仅记录设置
+      },
+      fail: () => {}
+    })
+  },
+
+  // ====== 用户数据持久化 ======
+  _loadPersistedUserData() {
+    if (app.canIUse('@system.file')) {
+      file.readText({
+        uri: USER_DATA_URI,
+        success: (r) => {
+          if (r && r.text) {
+            knowledgeStore.setUserData(r.text)
+            console.log('user data loaded from file')
+            this._broadcastUserDataLoaded()
+          }
+        },
+        fail: () => { this._loadFromStorage() }
+      })
+    } else {
+      this._loadFromStorage()
+    }
+  },
+  _loadFromStorage() {
+    storage.get({
+      key: LEGACY_STORAGE_KEY,
+      success: (data) => {
+        if (data) {
+          knowledgeStore.setUserData(data)
+          this._broadcastUserDataLoaded()
+        }
+      },
+      fail: function() {}
+    })
+  },
+  _broadcastUserDataLoaded() {
+    if (this.userDataLoaded) return
+    this.userDataLoaded = true
+    this._broadcastReceive({ kind: 'userdata-loaded' })
+  },
+
+  // ====== 全局兼容对象 ======
+  // push.ux 等页面通过 $app.$def 访问 conn / connfile
+  // 不使用 globalThis（部分 Vela 运行时不支持，如小米手环10 Pro）
+  _globalConn: null,
+  _globalConnfile: null,
+  _setupGlobals() {
+    const self = this
+    this._globalConn = {
+      get connected() { return self._connected }
+    }
+    this._globalConnfile = {
+      setCallback: function(cb) { self._pushCallback = cb },
+      targetFolder: ''
+    }
+  },
+  // 提供给 push.ux 使用的安全访问接口
+  getConn() { return this._globalConn || null },
+  getConnfile() { return this._globalConnfile || null },
+
+  // ====== 树同步模块初始化 ======
+  _setupTreeSync() {
+    const self = this
+    try {
+      this._treeModule = new interconnTree({
+        addListener: (callback) => { self._treeCallback = callback },
+        send: (payload) => self._sendToPhone(Object.assign({}, payload, { tag: 'tree' })),
+        setEventListener: (listener) => { self._treeEventListener = listener },
+        conn: this.interconnect,
+        removeListener: () => {},
+      })
+      console.log('[Tree] module initialized')
+    } catch (e) {
+      console.log('[Tree] init error: ' + e)
+    }
+  },
+
+  // ====== 通信层设置 ======
+  _setupInterconnect() {
+    const canUse = app.canIUse('@system.interconnect')
+    if (!canUse) {
+      console.log('interconnect feature 不可用,跳过接收')
+      return
+    }
+    let connect
+    try {
+      connect = interconnect.instance()
+    } catch (e) {
+      console.log('interconnect.instance FAIL ' + e)
+      return
+    }
+    this.interconnect = connect
+
+    connect.onmessage = (data) => {
+      const s = (data && data.data) || ''
+      if (!s) {
+        console.log('onmessage empty')
+        this._broadcastReceive({ kind: 'empty' })
+        return
+      }
+      let envelope = null
+      try {
+        envelope = JSON.parse(s)
+      } catch (e) {
+        this._dispatchRawImport(s, s.length)
+        return
+      }
+      if (envelope && typeof envelope === 'object' && typeof envelope.tag === 'string') {
+        // 连接活跃标记
+        this._connected = true
+
+        if (envelope.tag === HS_TAG) {
+          this._handleHsMessage(envelope)
+        } else if (envelope.tag === 'file') {
+          this._processFileMessage(envelope)
+        } else if (envelope.tag === 'chat') {
+          this._processChatMessage(envelope)
+        } else if (envelope.tag === 'tree') {
+          // 树同步消息：分发到 interconnTree 回调
+          if (this._treeCallback) {
+            try {
+              // 手动拷贝 payload（不使用 ES2018 object rest spread，兼容手环10 Pro）
+              var treePayload = {}
+              for (var k in envelope) {
+                if (k !== 'tag' && envelope.hasOwnProperty(k)) {
+                  treePayload[k] = envelope[k]
+                }
+              }
+              this._treeCallback(treePayload)
+            } catch (e) {
+              console.log('[Tree] callback error: ' + e)
+            }
+          }
+        } else {
+          console.log('onmessage unknown tag: ' + envelope.tag)
+        }
+      } else {
+        this._dispatchRawImport(s, s.length)
+      }
+    }
+
+    connect.onerror = (d) => {
+      console.log('interconnect onerror code=' + (d && d.code) + ' data=' + (d && d.data))
+      this._connected = false
+      this._hsCleanup()
+      // 通知树同步模块连接断开
+      if (this._treeEventListener) {
+        try { this._treeEventListener('close') } catch (e) {}
+      }
+    }
+
+    connect.onclose = () => {
+      console.log('[interconn] onclose')
+      this._connected = false
+      this._hsCleanup()
+      if (this._treeEventListener) {
+        try { this._treeEventListener('close') } catch (e) {}
+      }
+    }
+
+    connect.onopen = () => {
+      console.log('[interconn] onopen')
+      this._connected = true
+      // 通知树同步模块连接建立
+      if (this._treeEventListener) {
+        try { this._treeEventListener('open') } catch (e) {}
+      }
+    }
+  },
+
+  _dispatchRawImport(jsonStr, len) {
+    const r = this.receiveImportedJSON(jsonStr)
+    console.log('onmessage raw ' + (r.ok ? 'ok' : r.reason) + ' len=' + len)
+  },
+
+  _sendToPhone(obj) {
+    if (!this.interconnect || !this.interconnect.send) return
+    try {
+      this.interconnect.send({ data: obj })
+    } catch (e) {
+      console.log('interconnect.send FAIL ' + e)
+    }
+  },
+
+  // ====== 握手协议 ======
+  _handleHsMessage(msg) {
+    if (this.hsTimeoutTimer) {
+      clearTimeout(this.hsTimeoutTimer)
+      this.hsTimeoutTimer = null
+    }
+    if (typeof msg.count !== 'number') return
+    if (msg.count === 0) {
+      this._sendToPhone({ tag: HS_TAG, count: 1, version: BAND_VERSION_CODE })
+      this._startHsTimeout()
+    } else if (msg.count === 1) {
+      this._sendToPhone({ tag: HS_TAG, count: 2 })
+      this._hsHandshakeDone()
+    } else if (msg.count >= 2) {
+      this._startHeartbeat()
+    }
+  },
+  _hsHandshakeDone() {
+    if (this.hsTimeoutTimer) {
+      clearTimeout(this.hsTimeoutTimer)
+      this.hsTimeoutTimer = null
+    }
+    this._startHeartbeat()
+    console.log('hs handshake done')
+  },
+  _startHsTimeout() {
+    if (this.hsTimeoutTimer) clearTimeout(this.hsTimeoutTimer)
+    this.hsTimeoutTimer = setTimeout(() => {
+      console.log('hs timeout: no count>=2')
+      this._hsCleanup()
+    }, HS_TIMEOUT_MS)
+  },
+  _startHeartbeat() {
+    if (this.hbTimer) clearInterval(this.hbTimer)
+    this.hbTimer = setInterval(() => {
+      this._sendToPhone({ tag: HS_TAG, count: 0, version: BAND_VERSION_CODE })
+    }, HEARTBEAT_INTERVAL_MS)
+  },
+  _hsCleanup() {
+    if (this.hsTimeoutTimer) {
+      clearTimeout(this.hsTimeoutTimer)
+      this.hsTimeoutTimer = null
+    }
+    if (this.hbTimer) {
+      clearInterval(this.hbTimer)
+      this.hbTimer = null
+    }
+  },
+
+  // ====== 文件传输协议 ======
+  _newFileState() {
+    return {
+      mode: 'json',
+      buffer: {},
+      totalChunks: 0,
+      fileName: '',
+      totalBytes: 0,
+      receivedChunks: 0,
+      isReceiving: false,
+      formulaSubject: '',
+      formulaId: 0,
+      formulaW: 0,
+      formulaH: 0
+    }
+  },
+
+  _processFileMessage(msg) {
+    if (!msg || typeof msg.stat !== 'string') return
+    switch (msg.stat) {
+      case 'startTransfer': {
+        this.fileState = this._newFileState()
+        this.fileState.totalChunks = (typeof msg.totalChunks === 'number' && msg.totalChunks > 0) ? msg.totalChunks : 0
+        this.fileState.fileName = (typeof msg.filename === 'string') ? msg.filename : 'unknown.json'
+        this.fileState.totalBytes = (typeof msg.totalBytes === 'number') ? msg.totalBytes : 0
+        this.fileState.isReceiving = true
+        console.log('file transfer start: ' + this.fileState.fileName + ' ' + this.fileState.totalBytes + 'B ' + this.fileState.totalChunks + ' chunks')
+        // 通知 push.ux 页面
+        this._notifyPush('start', {
+          filename: this.fileState.fileName,
+          totalChars: this.fileState.totalBytes
+        })
+        this._sendToPhone({ tag: 'file', type: 'ready', nextChunkIndex: 0 })
+        break
+      }
+      case 'startFormula': {
+        this.fileState = this._newFileState()
+        this.fileState.mode = 'formula'
+        this.fileState.formulaSubject = (typeof msg.subject === 'string') ? msg.subject : ''
+        this.fileState.formulaId = (typeof msg.id === 'number') ? msg.id : 0
+        this.fileState.formulaW = (typeof msg.w === 'number') ? msg.w : 0
+        this.fileState.formulaH = (typeof msg.h === 'number') ? msg.h : 0
+        this.fileState.fileName = sanitizeFileName(msg.filename)
+        this.fileState.totalChunks = (typeof msg.totalChunks === 'number' && msg.totalChunks > 0) ? msg.totalChunks : 0
+        this.fileState.totalBytes = (typeof msg.totalBytes === 'number') ? msg.totalBytes : 0
+        this.fileState.isReceiving = true
+        console.log('formula transfer start: ' + this.fileState.formulaSubject + '#' + this.fileState.formulaId)
+        this._sendToPhone({ tag: 'file', type: 'ready', nextChunkIndex: 0 })
+        break
+      }
+      case 'd': {
+        const st = this.fileState
+        if (!st || !st.isReceiving) {
+          this._sendToPhone({ tag: 'file', type: 'error', message: 'not receiving' })
+          return
+        }
+        const idx = msg.chunkIndex
+        const data = msg.data
+        if (typeof idx !== 'number' || typeof data !== 'string') {
+          this._sendToPhone({ tag: 'file', type: 'error', message: 'bad chunk fields' })
+          return
+        }
+        if (st.buffer[idx] === undefined) {
+          st.buffer[idx] = data
+          st.receivedChunks++
+        } else {
+          st.buffer[idx] = data
+        }
+        // 通知 push.ux 进度
+        const progress = st.totalChunks > 0 ? st.receivedChunks / st.totalChunks : 0
+        this._notifyPush('next', {
+          progress: progress,
+          received: st.receivedChunks
+        })
+        this._sendToPhone({ tag: 'file', type: 'next_chunk' })
+        break
+      }
+      case 'transferComplete': {
+        this._finishFileTransfer()
+        break
+      }
+      case 'get_storage_info': {
+        this._reportStorageInfoToDevice()
+        break
+      }
+      case 'cancel': {
+        console.log('file transfer cancelled by phone')
+        this.fileState = null
+        this._notifyPush('cancel', {})
+        break
+      }
+      default:
+        console.log('file unknown stat: ' + msg.stat)
+        break
+    }
+  },
+
+  // 通知 push.ux 页面文件传输事件（兼容旧接口）
+  _notifyPush(msg, data) {
+    if (this._pushCallback) {
+      try {
+        this._pushCallback(Object.assign({ msg: msg }, data))
+      } catch (e) {
+        console.log('push callback error: ' + e)
+      }
+    }
+  },
+
+  _finishFileTransfer() {
+    const st = this.fileState
+    if (!st || !st.isReceiving) {
+      this._sendToPhone({ tag: 'file', type: 'error', message: 'finish without state' })
+      return
+    }
+    if (st.totalChunks <= 0 || st.receivedChunks < st.totalChunks) {
+      this._sendToPhone({ tag: 'file', type: 'error', message: 'chunks incomplete ' + st.receivedChunks + '/' + st.totalChunks })
+      this._notifyPush('error', { error: '传输不完整' })
+      return
+    }
+    let full = ''
+    for (let i = 0; i < st.totalChunks; i++) {
+      full += st.buffer[i] != null ? st.buffer[i] : ''
+    }
+    this.fileState = null
+
+    if (st.mode === 'formula') {
+      this._finishFormulaTransfer(st, full)
+      return
+    }
+    this._finishJsonTransfer(st, full)
+  },
+
+  _finishJsonTransfer(st, fullJson) {
+    let ok = false, reason = ''
+    try {
+      const parsed = JSON.parse(fullJson)
+      knowledgeStore.mergeParsedInto(parsed)
+      const persistResult = this._persistCurrentUserData()
+      ok = persistResult.ok
+      if (!ok) reason = 'persist ' + (persistResult.code || 'fail')
+      console.log('file transfer completed: ' + fullJson.length + 'B persisted=' + ok)
+    } catch (e) {
+      reason = 'parse/merge fail'
+      console.log('file transfer finalize fail: ' + e)
+    }
+    if (ok) {
+      this._sendToPhone({ tag: 'file', type: 'transfer_finished' })
+      this._broadcastReceive({ kind: 'imported', len: fullJson.length, persisted: true })
+      // 通知 push.ux 成功
+      this._notifyPush('success', {})
+    } else {
+      this._sendToPhone({ tag: 'file', type: 'error', message: reason })
+      this._notifyPush('error', { error: reason })
+    }
+  },
+
+  _finishFormulaTransfer(st, fullB64) {
+    if (!st.formulaSubject || !st.formulaId) {
+      this._sendToPhone({ tag: 'file', type: 'error', message: 'formula meta missing' })
+      return
+    }
+    const fileUri = FORMULA_DIR_URI + st.fileName
+    const bytes = base64ToArrayBuffer(fullB64)
+    if (!bytes || bytes.byteLength <= 0) {
+      this._sendToPhone({ tag: 'file', type: 'error', message: 'formula empty bytes' })
+      return
+    }
+    file.writeArrayBuffer({
+      uri: fileUri,
+      buffer: new Uint8Array(bytes),
+      append: false,
+      success: () => {
+        const key = st.formulaSubject + '#' + st.formulaId
+        knowledgeStore.setUserFormulaIndex({
+          [key]: { file: st.fileName, w: st.formulaW, h: st.formulaH }
+        })
+        const persistResult = this._persistFormulaIndex()
+        this._sendToPhone({ tag: 'file', type: 'transfer_finished' })
+        this._broadcastReceive({
+          kind: 'formula-imported',
+          key: key,
+          file: st.fileName,
+          persisted: persistResult.ok
+        })
+        console.log('formula saved: ' + key + ' -> ' + fileUri + ' ' + bytes.byteLength + 'B')
+      },
+      fail: (er) => {
+        console.log('formula write FAIL code=' + (er && er.code))
+        this._sendToPhone({ tag: 'file', type: 'error', message: 'formula write fail code=' + (er && er.code) })
+      }
+    })
+  },
+
+  // ====== 存储信息查询 ======
+  _reportStorageInfoToDevice() {
+    let done = false
+    const finish = (info) => {
+      if (done) return
+      done = true
+      this._sendToPhone(Object.assign({ tag: 'file', type: 'storage_info' }, info))
+    }
+    const timer = setTimeout(() => {
+      finish({ product: null, totalStorage: 0, availableStorage: 0, reservedStorage: 0, usedStorage: 0, actualAvailable: 0 })
+    }, 2500)
+
+    ;(() => {
+      let product = null
+      let totalStorage = 0
+      let availableStorage = 0
+
+      const step1 = () => {
+        this._promiseVela(device.getInfo).then(
+          (d) => { product = (d && (d.product || d.model)) || null; step2() },
+          () => { step2() }
+        )
+      }
+      const step2 = () => {
+        this._promiseVela(device.getTotalStorage).then(
+          (d) => { totalStorage = Number(d && d.totalStorage) || 0; step3() },
+          () => { step3() }
+        )
+      }
+      const step3 = () => {
+        this._promiseVela(device.getAvailableStorage).then(
+          (d) => { availableStorage = Number(d && d.availableStorage) || 0; finishUp() },
+          () => { finishUp() }
+        )
+      }
+      const finishUp = () => {
+        clearTimeout(timer)
+        const reservedStorage = this._reservedStorageByProduct(product)
+        const usedStorage = Math.max(0, totalStorage - availableStorage)
+        const actualAvailable = Math.max(0, totalStorage - reservedStorage - usedStorage)
+        finish({ product, totalStorage, availableStorage, reservedStorage, usedStorage, actualAvailable })
+      }
+
+      step1()
+    })()
+  },
+  _promiseVela(fn, params) {
+    return new Promise((resolve, reject) => {
+      try {
+        if (typeof fn !== 'function') { reject(new Error('no api')); return }
+        // 手动拷贝 params（不使用 ES2018 object spread，兼容手环10 Pro）
+        var opts = {}
+        var p = params || {}
+        for (var key in p) {
+          if (p.hasOwnProperty(key)) opts[key] = p[key]
+        }
+        opts.success = resolve
+        opts.fail = function(d, code) { reject(new Error('code=' + code)) }
+        fn(opts)
+      } catch (e) { reject(e) }
+    })
+  },
+  _reservedStorageByProduct(product) {
+    if (!product) return 0
+    if (product === 'REDMI Watch 6') return 120 * 1024 * 1024
+    if (product === 'REDMI Watch 5') return 120 * 1024 * 1024
+    if (product === 'Xiaomi Smart Band 9') return 64 * 1024 * 1024
+    if (product === 'Xiaomi Smart Band 9 Pro') return 64 * 1024 * 1024
+    if (product === 'Xiaomi Smart Band 8 Pro') return 84 * 1024 * 1024
+    if (product === 'o65m') return 1024 * 1024 * 1024
+    if (product.indexOf('Xiaomi Smart Band 10') >= 0) return 90 * 1024 * 1024
+    return 0
+  },
+
+  // ====== AI 聊天助手 Amadeus ======
+  onChat(cb) {
+    if (typeof cb !== 'function') return () => {}
+    this.chatListeners.push(cb)
+    return () => {
+      const i = this.chatListeners.indexOf(cb)
+      if (i >= 0) this.chatListeners.splice(i, 1)
+    }
+  },
+  _broadcastChat(evt) {
+    const list = this.chatListeners
+    for (let i = 0; i < list.length; i++) {
+      try { list[i](evt) } catch (e) {}
+    }
+  },
+  startNewChatSession() {
+    const sid = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+    this.chatSession = { sessionId: sid }
+    this._sendToPhone({ type: 'chat_new', sessionId: sid })
+    return sid
+  },
+  sendChatMessage(text) {
+    if (!text) return
+    let sid = this.chatSession && this.chatSession.sessionId
+    if (!sid) {
+      sid = this.startNewChatSession()
+    }
+    this._armChatWatchdog()
+    this._sendToPhone({ type: 'chat_request', sessionId: sid, text: text })
+  },
+  _armChatWatchdog() {
+    if (this.chatWatchdog) clearTimeout(this.chatWatchdog)
+    this.chatWatchdog = setTimeout(() => {
+      this.chatWatchdog = null
+      this.chatReplyState = null
+      this._broadcastChat({ kind: 'timeout' })
+    }, 15000)
+  },
+  _clearChatWatchdog() {
+    if (this.chatWatchdog) { clearTimeout(this.chatWatchdog); this.chatWatchdog = null }
+  },
+  _processChatMessage(msg) {
+    if (!msg || typeof msg.stat !== 'string') return
+    switch (msg.stat) {
+      case 'reply_start': {
+        this.chatReplyState = {
+          buffer: {},
+          totalChunks: (typeof msg.totalChunks === 'number' && msg.totalChunks > 0) ? msg.totalChunks : 0,
+          received: 0,
+          sessionId: (typeof msg.sessionId === 'string') ? msg.sessionId : (this.chatSession && this.chatSession.sessionId) || ''
+        }
+        this._clearChatWatchdog()
+        this._broadcastChat({ kind: 'reply_start', sessionId: this.chatReplyState.sessionId })
+        break
+      }
+      case 'reply_chunk': {
+        const st = this.chatReplyState
+        if (!st) {
+          this._sendToPhone({ type: 'reply_ack', ok: false, reason: 'not receiving' })
+          return
+        }
+        const idx = msg.chunkIndex
+        const data = msg.data
+        if (typeof idx !== 'number' || typeof data !== 'string') {
+          this._sendToPhone({ type: 'reply_ack', ok: false, reason: 'bad chunk' })
+          return
+        }
+        if (st.buffer[idx] === undefined) {
+          st.buffer[idx] = data
+          st.received++
+        } else {
+          st.buffer[idx] = data
+        }
+        this._sendToPhone({ type: 'reply_ack', ok: true, chunkIndex: idx })
+        break
+      }
+      case 'reply_end': {
+        this._clearChatWatchdog()
+        const st = this.chatReplyState
+        this.chatReplyState = null
+        if (!st || st.received <= 0) {
+          this._broadcastChat({ kind: 'reply_error', message: '回复不完整' })
+          return
+        }
+        let full = ''
+        for (let i = 0; i < (st.totalChunks || st.received); i++) {
+          full += (st.buffer[i] != null) ? st.buffer[i] : ''
+        }
+        this._broadcastChat({ kind: 'reply_end', sessionId: st.sessionId, fullText: full })
+        break
+      }
+      case 'reply_error': {
+        this._clearChatWatchdog()
+        this.chatReplyState = null
+        this._broadcastChat({ kind: 'reply_error', message: (typeof msg.message === 'string') ? msg.message : '手机端错误' })
+        break
+      }
+      case 'chat_new_ack': {
+        if (typeof msg.sessionId === 'string' && msg.sessionId) {
+          this.chatSession = { sessionId: msg.sessionId }
+          this._broadcastChat({ kind: 'new_session', sessionId: msg.sessionId })
+        }
+        break
+      }
+      default:
+        console.log('chat unknown stat: ' + msg.stat)
+        break
+    }
+  },
+
+  // ====== 用户数据持久化 ======
+  _persistCurrentUserData() {
+    if (!app.canIUse('@system.file')) return { ok: false, code: 'no-feature' }
+    const jsonStr = knowledgeStore.getUserDataJSON()
+    if (!jsonStr) {
+      console.log('persist skip: no user data')
+      return { ok: false, code: 'no-data' }
+    }
+    file.writeText({
+      uri: USER_DATA_URI,
+      text: jsonStr,
+      success: () => { console.log('user data persisted to file') },
+      fail: (er) => { console.log('persist FAIL code=' + (er && er.code)) }
+    })
+    return { ok: true }
+  },
+
+  // ====== 公式图片存储 ======
+  _setupFormulaStorage() {
+    if (!app.canIUse('@system.file')) return
+    file.mkdir({
+      uri: FORMULA_DIR_URI,
+      recursive: true,
+      success: () => { this._loadPersistedFormulaIndex() },
+      fail: () => { this._loadPersistedFormulaIndex() }
+    })
+  },
+  _loadPersistedFormulaIndex() {
+    file.readText({
+      uri: FORMULA_INDEX_URI,
+      success: (r) => {
+        if (!r || !r.text) return
+        try {
+          knowledgeStore.setUserFormulaIndex(JSON.parse(r.text))
+          console.log('formula index loaded from file')
+        } catch (e) {
+          console.log('formula index parse fail, ignored')
+        }
+      },
+      fail: () => {}
+    })
+  },
+  _persistFormulaIndex() {
+    if (!app.canIUse('@system.file')) return { ok: false, code: 'no-feature' }
+    const idx = knowledgeStore.getUserFormulaIndex()
+    file.writeText({
+      uri: FORMULA_INDEX_URI,
+      text: JSON.stringify(idx),
+      success: () => { console.log('formula index persisted to file') },
+      fail: (er) => { console.log('formula index persist FAIL code=' + (er && er.code)) }
+    })
+    return { ok: true }
+  }
+}
+</script>

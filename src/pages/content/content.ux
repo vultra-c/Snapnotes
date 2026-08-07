@@ -1,0 +1,799 @@
+<template>
+  <div class="page">
+
+    <!-- 结构化内容滚动区域 -->
+    <scroll
+      id="contentScroll"
+      scroll-y="{{true}}"
+      scroll-top="{{scrollTopValue}}"
+      @scroll="onScroll"
+      @scrollbottom="onReachBottom"
+      @click="onTxtClick"
+      style="position: absolute; left: 0px; top: 10px; width: 336px; height: 460px;"
+    >
+      <div style="position: absolute; width: 336px; flex-direction: column; padding-left: 20px; padding-right: 20px; padding-bottom: 60px;">
+
+        <!-- 逐块渲染 -->
+        <div for="{{visibleBlocks}}" tid="key" style="width: 296px; flex-direction: column;">
+
+          <!-- 学科徽章 -->
+          <div if="{{$item.type === 'subject'}}" style="flex-direction: row; margin-top: 12px; margin-bottom: 6px;">
+            <div style="background-color: {{$item.color}}; border-radius: 8px; padding-left: 12px; padding-right: 12px; padding-top: 4px; padding-bottom: 4px;">
+              <text style="color: #FFFFFF; font-size: 22px; font-weight: bold;">{{$item.text}}</text>
+            </div>
+          </div>
+
+          <!-- 标题 -->
+          <text if="{{$item.type === 'title'}}" style="color: #FFFFFF; font-size: 34px; font-weight: bold; margin-top: 8px; margin-bottom: 4px;">{{$item.text}}</text>
+
+          <!-- 描述 -->
+          <text if="{{$item.type === 'desc'}}" style="color: rgba(255,255,255,0.4); font-size: 22px; margin-bottom: 6px;">{{$item.text}}</text>
+
+          <!-- 分隔线 -->
+          <div if="{{$item.type === 'divider'}}" style="width: 296px; height: 1px; background-color: rgba(255,255,255,0.15); margin-top: 14px; margin-bottom: 14px;"></div>
+
+          <!-- 模块标签（原文/翻译/知识点等） -->
+          <div if="{{$item.type === 'section_label'}}" style="flex-direction: row; margin-top: 12px; margin-bottom: 8px;">
+            <div style="background-color: {{$item.color}}; border-radius: 6px; padding-left: 10px; padding-right: 10px; padding-top: 3px; padding-bottom: 3px;">
+              <text style="color: #FFFFFF; font-size: 22px; font-weight: bold;">{{$item.text}}</text>
+            </div>
+          </div>
+
+          <!-- 段落内容 -->
+          <text if="{{$item.type === 'paragraph'}}" style="color: {{$item.color}}; font-size: {{$item.fontSize}}px; line-height: {{lineHeight}}px; margin-top: 4px; margin-bottom: 4px;">{{$item.text}}</text>
+
+          <!-- 带序号的知识点标题 -->
+          <div if="{{$item.type === 'item_title'}}" style="flex-direction: row; align-items: center; margin-top: 10px; margin-bottom: 4px;">
+            <div style="width: 28px; height: 28px; border-radius: 14px; background-color: {{$item.color}}; justify-content: center; align-items: center; margin-right: 8px;">
+              <text style="color: #FFFFFF; font-size: 18px; font-weight: bold;">{{$item.number}}</text>
+            </div>
+            <text style="color: {{$item.color}}; font-size: {{$item.fontSize}}px; font-weight: bold; flex: 1;">{{$item.text}}</text>
+          </div>
+
+          <!-- 知识点内容 -->
+          <text if="{{$item.type === 'item_content'}}" style="color: {{$item.color}}; font-size: {{$item.fontSize}}px; line-height: {{lineHeight}}px; margin-left: 36px; margin-top: 2px; margin-bottom: 4px;">{{$item.text}}</text>
+
+          <!-- 公式图片（PNG 渲染的 LaTeX 公式，点击放大） -->
+          <div if="{{$item.type === 'formula_image'}}" style="width: 296px; flex-direction: column; align-items: center; margin-top: 8px; margin-bottom: 8px;">
+            <img src="{{$item.src}}" @click="zoomOpen($item.src, $item.w, $item.h)" style="width: 296px; height: auto;" />
+          </div>
+
+        </div>
+
+        <!-- 加载提示 -->
+        <text show="{{hasMoreSegments}}" style="color: rgba(255,255,255,0.3); font-size: 22px; text-align: center; margin-top: 20px; margin-bottom: 20px;">加载中...</text>
+
+        <!-- 到底提示 -->
+        <text show="{{!hasMoreSegments && contentLoaded}}" style="color: rgba(255,255,255,0.2); font-size: 20px; text-align: center; margin-top: 20px; margin-bottom: 20px;">— 已到底部 —</text>
+
+      </div>
+    </scroll>
+
+    <!-- 顶部遮罩栏 -->
+    <img show="{{showSetting}}" src="/common/images/hd.png" @swipe="onSwipe" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
+
+    <!-- 返回按钮 -->
+    <img show="{{showSetting}}" src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
+
+    <!-- 设置按钮 -->
+    <img show="{{showSetting}}" src="/common/images/more.png" @click="goSettings" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />
+
+    <!-- 时间和文件名 -->
+    <text show="{{showSetting}}" style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>
+    <text show="{{showSetting}}" style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center; lines: 1; text-overflow: ellipsis;">{{pageName}}</text>
+
+    <!-- 公式大图弹层：点公式图打开，全屏黑底，档位缩放 + 自由拖拽 -->
+    <div if="{{zoomShow}}" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 480px; background-color: #0A0A0C; z-index: 999; flex-direction: column; align-items: center;">
+      <text style="width: 336px; padding-left: 24px; padding-right: 24px; padding-top: 12px; padding-bottom: 12px; margin-top: 52px; color: #7899BB; font-size: 20px; text-align: center;">{{zoomHint}}</text>
+      <div @touchstart="zoomTouchStart" @touchmove="zoomTouchMove" @touchend="zoomTouchEnd" @click="zoomClick" style="width: 336px; flex: 1; flex-direction: row; align-items: center; justify-content: center; overflow: hidden;">
+        <img src="{{zoomSrc}}" style="width:{{zoomW}}px; height:{{zoomH}}px; transform:{{zoomTransform}}; flex-shrink: 0;" />
+      </div>
+      <!-- 缩放按钮：缩小(-) / 放大(+) 半透明圆形，底部居中 -->
+      <div style="width: 336px; height: 84px; flex-direction: row; justify-content: center; align-items: center;">
+        <div @click="zoomOut" style="width: 60px; height: 60px; border-radius: 30px; background-color: rgba(255,255,255,0.15); justify-content: center; align-items: center; margin-right: 32px;">
+          <text style="color: white; font-size: 36px; font-weight: bold;">-</text>
+        </div>
+        <div @click="zoomIn" style="width: 60px; height: 60px; border-radius: 30px; background-color: rgba(255,255,255,0.15); justify-content: center; align-items: center; margin-left: 32px;">
+          <text style="color: white; font-size: 36px; font-weight: bold;">+</text>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import storage from '@system.storage'
+import dataManager from '../../common/utils/dataManager.js'
+import { getFormattedTimeNow } from '../../common/utils/timeUtil.js'
+import appState from '../../common/utils/appState.js'
+
+export default {
+  private: {
+    nowTime: '00:00',
+    timer: null,
+    timeFormat: '24h',
+    pageName: '全文',
+    showSetting: true,
+    fontSize: 26,
+    lineHeight: 30,
+    contentName: '',
+    // 结构化内容
+    segments: [],
+    visibleBlocks: [],
+    currentSegmentIndex: 0,
+    hasMoreSegments: false,
+    contentLoaded: false,
+    // 滚动
+    scrollTopValue: 0,
+    scrollTop: 0,
+    readingPercent: 0,
+    maxScrollEstimate: 1,
+    // 版本控制
+    contentVersion: 0,
+    blockKeyCounter: 0,
+    // 重定向标志
+    redirecting: false,
+    // 公式大图弹层状态
+    zoomShow: false,
+    zoomScale: 1,
+    zoomSrc: '',
+    zoomW: 288,
+    zoomH: 0,
+    zoomHint: '1.0x · 单击收起 · 双击切档 · 拖动看全',
+    zoomTransform: 'translate(0px, 0px)',
+    zoomLastTap: 0,
+    zoomTapTimer: null,
+    zoomTx: 0,
+    zoomTy: 0,
+    zoomStartTx: 0,
+    zoomStartTy: 0,
+    zoomStartX: 0,
+    zoomStartY: 0,
+    zoomMoved: false,
+    formulaW: 0,
+    formulaH: 0
+  },
+  protected: {
+    path: '',
+    matchStart: -1,
+    knowledgeSubject: '',
+    knowledgeIndex: -1
+  },
+
+  onInit() {
+    this.timer = setInterval(() => {
+      if (this.$valid) {
+        this.nowTime = getFormattedTimeNow(this.timeFormat)
+        this.saveProgress()
+      }
+    }, 60000)
+    this.initContent()
+  },
+
+  // 知识点内容转 blocks
+  knowledgeToBlocks(kp, subject) {
+    var blocks = []
+    var color = '#7899BB'
+
+    // 学科徽章
+    blocks.push({ type: 'subject', text: subject, color: color })
+
+    // 标题
+    blocks.push({ type: 'title', text: kp.title || '知识点' })
+
+    // 描述
+    if (kp.desc) {
+      blocks.push({ type: 'desc', text: kp.desc })
+    }
+
+    // 分隔线
+    blocks.push({ type: 'divider' })
+
+    // 原文（raw 字段）
+    if (kp.raw) {
+      blocks.push({ type: 'section_label', text: '原文', color: '#4CAF50' })
+      var rawLines = kp.raw.split('\n')
+      for (var i = 0; i < rawLines.length; i++) {
+        var line = rawLines[i].trim()
+        if (line) {
+          blocks.push({
+            type: 'paragraph',
+            text: line,
+            color: 'rgba(255,255,255,0.85)',
+            fontSize: this.fontSize
+          })
+        }
+      }
+    }
+
+    // 知识点要点（points 字段）
+    if (kp.points && kp.points.length > 0) {
+      blocks.push({ type: 'section_label', text: '知识点', color: '#FF9800' })
+      for (var j = 0; j < kp.points.length; j++) {
+        blocks.push({
+          type: 'item_title',
+          number: (j + 1).toString(),
+          text: kp.points[j],
+          color: '#FF9800',
+          fontSize: this.fontSize
+        })
+      }
+    }
+
+    // 公式图片
+    if (kp.formulaImg) {
+      blocks.push({ type: 'divider' })
+      blocks.push({
+        type: 'formula_image',
+        src: kp.formulaImg,
+        w: kp.formulaW || 0,
+        h: kp.formulaH || 0
+      })
+    }
+
+    return blocks
+  },
+
+  // 将 blocks 分段（每段最多 25 个块）
+  splitBlocksIntoSegments(blocks) {
+    var segments = []
+    var SEGMENT_SIZE = 25
+    for (var i = 0; i < blocks.length; i += SEGMENT_SIZE) {
+      segments.push(blocks.slice(i, i + SEGMENT_SIZE))
+    }
+    if (segments.length === 0) segments.push([])
+    return segments
+  },
+
+  loadKnowledgeContent() {
+    var version = ++this.contentVersion
+    var self = this
+
+    this.loadSettingsBatch().then(function() {
+      if (version !== self.contentVersion || !self.$valid) return
+
+      var store = self.$app.$def && self.$app.$def.store
+      if (!store || !store.getKnowledge) {
+        console.log('knowledgeStore not available')
+        return
+      }
+
+      var points = store.getKnowledge(self.knowledgeSubject)
+      if (!points || self.knowledgeIndex < 0 || self.knowledgeIndex >= points.length) {
+        console.log('knowledge point not found: ' + self.knowledgeSubject + '#' + self.knowledgeIndex)
+        return
+      }
+
+      var kp = points[self.knowledgeIndex]
+      var blocks = self.knowledgeToBlocks(kp, self.knowledgeSubject)
+      var segments = self.splitBlocksIntoSegments(blocks)
+
+      if (version !== self.contentVersion || !self.$valid) return
+
+      self.segments = segments
+      self.currentSegmentIndex = 0
+      self.blockKeyCounter = 0
+      self.visibleBlocks = self.addKeys(segments[0] || [])
+      self.hasMoreSegments = segments.length > 1
+      self.contentLoaded = true
+
+      self.contentName = kp.title || self.knowledgeSubject
+      self.pageName = kp.title || self.knowledgeSubject
+
+      // 用唯一 key 作为阅读进度路径
+      self.path = 'kd_' + self.knowledgeSubject + '_' + self.knowledgeIndex
+
+      appState.isStructured = true
+      appState.readerPath = self.path
+      appState.contentName = self.contentName
+      appState.fontSize = self.fontSize
+      appState.lineHeight = self.lineHeight
+      appState.structuredTotalPages = segments.length
+      appState.totalPages = segments.length
+
+      self.estimateMaxScroll()
+      self.loadReadingProgress()
+    })
+  },
+
+  initContent() {
+    // 知识点模式：从 knowledgeStore 加载
+    if (this.knowledgeSubject) {
+      this.loadKnowledgeContent()
+      return
+    }
+
+    const version = ++this.contentVersion
+    this.loadSettingsBatch().then(() => {
+      if (version !== this.contentVersion || !this.$valid) return
+
+      // 加载结构化内容
+      dataManager.getStructuredBlocks(this.path, this.fontSize).then((segments) => {
+        if (version !== this.contentVersion || !this.$valid) return
+
+        this.segments = segments
+        this.currentSegmentIndex = 0
+        this.blockKeyCounter = 0
+
+        // 渲染第一段
+        this.visibleBlocks = this.addKeys(segments[0] || [])
+        this.hasMoreSegments = segments.length > 1
+        this.contentLoaded = true
+
+        // 设置页面名称
+        const name = dataManager.getUnifiedNodeName(this.path)
+        if (name) {
+          this.contentName = name
+          this.pageName = name
+        }
+
+        // 同步 appState
+        appState.isStructured = true
+        appState.readerPath = this.path
+        appState.contentName = this.contentName
+        appState.fontSize = this.fontSize
+        appState.lineHeight = this.lineHeight
+
+        // 计算虚拟总页数（供 pageJump 使用）
+        appState.structuredTotalPages = segments.length
+        appState.totalPages = segments.length
+
+        // 估算最大滚动距离
+        this.estimateMaxScroll()
+
+        // 恢复阅读进度
+        this.loadReadingProgress()
+      })
+    })
+  },
+
+  onShow() {
+    if (!this.$valid) return
+
+    // 删除内容后自动返回上级
+    if (appState.refreshReader) {
+      appState.refreshReader = false
+      appState.isStructured = false
+      router.back()
+      return
+    }
+
+    if (!this.contentLoaded) return
+
+    // 检查字号变化
+    this.loadSettingsBatch().then((fontChanged) => {
+      if (!this.$valid) return
+
+      if (fontChanged) {
+        this.reloadContent().then(() => {
+          if (!this.$valid) return
+          // 处理跳转请求
+          this.applyJump()
+        })
+        return
+      }
+
+      // 处理跳转请求
+      this.applyJump()
+    })
+  },
+
+  onDestroy() {
+    if (this.timer) {
+      clearInterval(this.timer)
+      this.timer = null
+    }
+    if (!this.redirecting) {
+      this.saveProgress()
+    }
+    appState.isStructured = false
+  },
+
+  // 为每个 block 添加唯一 key（用于 for 指令的 tid）
+  addKeys(blocks) {
+    var result = []
+    for (var i = 0; i < blocks.length; i++) {
+      var block = blocks[i]
+      block.key = 'blk_' + (this.blockKeyCounter++)
+      result.push(block)
+    }
+    return result
+  },
+
+  reloadContent() {
+    // 知识点模式：重新生成 blocks
+    if (this.knowledgeSubject) {
+      var kdStore = this.$app.$def && this.$app.$def.store
+      if (kdStore && kdStore.getKnowledge) {
+        var kdPoints = kdStore.getKnowledge(this.knowledgeSubject)
+        if (kdPoints && this.knowledgeIndex >= 0 && this.knowledgeIndex < kdPoints.length) {
+          var kp = kdPoints[this.knowledgeIndex]
+          var kdBlocks = this.knowledgeToBlocks(kp, this.knowledgeSubject)
+          var kdSegments = this.splitBlocksIntoSegments(kdBlocks)
+          if (!this.$valid) return Promise.resolve()
+
+          var kdOldRatio = this.maxScrollEstimate > 0 ? this.scrollTop / this.maxScrollEstimate : 0
+          this.segments = kdSegments
+          this.currentSegmentIndex = 0
+          this.blockKeyCounter = 0
+          this.visibleBlocks = this.addKeys(kdSegments[0] || [])
+          this.hasMoreSegments = kdSegments.length > 1
+          appState.structuredTotalPages = kdSegments.length
+          appState.totalPages = kdSegments.length
+          this.estimateMaxScroll()
+
+          var kdRestoreScroll = Math.round(kdOldRatio * this.maxScrollEstimate)
+          this.$nextTick(() => {
+            if (!this.$valid) return
+            this.scrollTopValue = kdRestoreScroll
+            this.scrollTop = kdRestoreScroll
+            this.updatePercent(kdRestoreScroll)
+          })
+          return Promise.resolve()
+        }
+      }
+      return Promise.resolve()
+    }
+
+    return dataManager.getStructuredBlocks(this.path, this.fontSize).then((segments) => {
+      if (!this.$valid) return
+
+      // 保存当前滚动位置比例
+      var oldRatio = this.maxScrollEstimate > 0 ? this.scrollTop / this.maxScrollEstimate : 0
+
+      this.segments = segments
+      this.currentSegmentIndex = 0
+      this.blockKeyCounter = 0
+      this.visibleBlocks = this.addKeys(segments[0] || [])
+      this.hasMoreSegments = segments.length > 1
+      appState.structuredTotalPages = segments.length
+      appState.totalPages = segments.length
+
+      this.estimateMaxScroll()
+
+      // 按比例恢复滚动位置
+      var restoreScroll = Math.round(oldRatio * this.maxScrollEstimate)
+      this.$nextTick(() => {
+        if (!this.$valid) return
+        this.scrollTopValue = restoreScroll
+        this.scrollTop = restoreScroll
+        this.updatePercent(restoreScroll)
+      })
+    })
+  },
+
+  storageGet(key) {
+    return new Promise((resolve) => {
+      storage.get({
+        key: key,
+        success: (data) => resolve(data),
+        fail: () => resolve(null)
+      })
+    })
+  },
+
+  loadSettingsBatch() {
+    return this.storageGet('KD_FONT_SIZE').then((r0) => {
+      return this.storageGet('KD_LINE_HEIGHT').then((r1) => {
+        return this.storageGet('KD_KEEP_SCREEN_ON').then((r2) => {
+          return this.storageGet('KD_TIME_FORMAT').then((r3) => {
+            if (!this.$valid) return false
+
+            const results = [r0, r1, r2, r3]
+            const fontSizeStr = results[0]
+            const lineHeightStr = results[1]
+            const keepOnStr = results[2]
+            const timeFormatStr = results[3]
+
+            let fontSize = fontSizeStr ? parseInt(fontSizeStr) : 26
+            if (isNaN(fontSize)) fontSize = 26
+            if (fontSize < 20) fontSize = 20
+            if (fontSize > 36) fontSize = 36
+
+            let lineHeight = lineHeightStr ? parseInt(lineHeightStr) : Math.round(fontSize * 1.15)
+            if (isNaN(lineHeight) || lineHeight < 20) lineHeight = Math.round(fontSize * 1.15)
+            if (lineHeight > 50) lineHeight = 50
+
+            const fontChanged = (this.fontSize !== fontSize)
+            this.fontSize = fontSize
+            this.lineHeight = lineHeight
+            appState.fontSize = fontSize
+            appState.lineHeight = lineHeight
+
+            const keepOn = keepOnStr === 'true'
+            // brightness 暂不可用
+
+            this.timeFormat = timeFormatStr || '24h'
+            this.nowTime = getFormattedTimeNow(this.timeFormat)
+            return fontChanged
+          })
+        })
+      })
+    })
+  },
+
+  loadReadingProgress() {
+    return dataManager.getReadingProgress(this.path).then((progress) => {
+      if (!this.$valid) return
+      if (progress != null && progress !== undefined && progress >= 0) {
+        this.$nextTick(() => {
+          if (!this.$valid) return
+          this.scrollTopValue = progress
+          this.scrollTop = progress
+          this.updatePercent(progress)
+        })
+      }
+    }).catch(() => {
+      // 读取进度失败时忽略
+    })
+  },
+
+  saveProgress() {
+    try {
+      if (this.path) {
+        dataManager.saveReadingProgress(this.path, this.scrollTop || 0)
+      }
+    } catch (e) {
+      // 保存进度失败时忽略
+    }
+  },
+
+  // 估算内容总高度，用于百分比进度
+  estimateMaxScroll() {
+    var totalBlocks = 0
+    for (var i = 0; i < this.segments.length; i++) {
+      totalBlocks += this.segments[i].length
+    }
+    // 每个块平均约 (lineHeight + 10) 像素高度
+    var estimatedHeight = totalBlocks * (this.lineHeight + 10) + 80
+    this.maxScrollEstimate = Math.max(1, estimatedHeight - 460)
+  },
+
+  updatePercent(scrollTop) {
+    var newPercent = Math.min(100, Math.max(0, Math.round(scrollTop / this.maxScrollEstimate * 100)))
+    if (Math.abs(newPercent - this.readingPercent) >= 1) {
+      this.readingPercent = newPercent
+      appState.structuredCurrentPage = newPercent
+    }
+  },
+
+  onScroll(e) {
+    var st = e.scrollTop || (e.detail && e.detail.scrollTop) || 0
+    this.scrollTop = st
+    this.updatePercent(st)
+  },
+
+  onReachBottom() {
+    // 分段加载：加载下一段
+    if (this.hasMoreSegments && this.currentSegmentIndex < this.segments.length - 1) {
+      this.currentSegmentIndex++
+      var nextSegment = this.addKeys(this.segments[this.currentSegmentIndex] || [])
+      this.visibleBlocks = this.visibleBlocks.concat(nextSegment)
+      this.hasMoreSegments = this.currentSegmentIndex < this.segments.length - 1
+      // 更新滚动估算
+      this.estimateMaxScroll()
+    } else {
+      this.readingPercent = 100
+      this.hasMoreSegments = false
+    }
+  },
+
+  applyJump() {
+    // 百分比跳转
+    if (appState.jumpToPercent != null && appState.jumpToPercent !== undefined) {
+      var percent = parseInt(appState.jumpToPercent)
+      appState.jumpToPercent = null
+      var targetScroll = Math.round(percent / 100 * this.maxScrollEstimate)
+      this.$nextTick(() => {
+        if (!this.$valid) return
+        this.scrollTopValue = targetScroll
+        this.scrollTop = targetScroll
+        this.readingPercent = percent
+        this.saveProgress()
+      })
+      prompt.showToast({ message: '已跳转到 ' + percent + '%', duration: 1000 })
+      return
+    }
+
+    // 页码跳转（转换为百分比）
+    if (appState.jumpToPage != null && appState.jumpToPage !== undefined) {
+      var page = parseInt(appState.jumpToPage)
+      appState.jumpToPage = null
+      var total = appState.structuredTotalPages || this.segments.length || 1
+      var jumpPercent = Math.round(page / total * 100)
+      var targetScroll = Math.round(jumpPercent / 100 * this.maxScrollEstimate)
+      this.$nextTick(() => {
+        if (!this.$valid) return
+        this.scrollTopValue = targetScroll
+        this.scrollTop = targetScroll
+        this.readingPercent = jumpPercent
+        this.saveProgress()
+      })
+      prompt.showToast({ message: '已跳转', duration: 1000 })
+    }
+  },
+
+  onTxtClick() {
+    this.showSetting = !this.showSetting
+    this.saveProgress()
+  },
+
+  goSettings() {
+    appState.readerPath = this.path
+    appState.contentName = this.contentName
+    router.push({
+      uri: '/pages/readerSettings',
+      params: { path: this.path }
+    })
+  },
+
+  goBack() {
+    router.back()
+  },
+
+  onSwipe(e) {
+    if (e.direction === 'right') {
+      if (!this.showSetting) {
+        this.showSetting = true
+      } else {
+        router.back()
+      }
+    }
+  },
+
+  onBackPress() {
+    if (this.zoomShow) {
+      this.zoomClose()
+      return true
+    }
+    router.back()
+    return true
+  },
+
+  // 点正文公式图 → 打开弹层，初始 1x
+  zoomOpen(src, w, h) {
+    if (!src) return
+    this.zoomSrc = src
+    this.formulaW = w || 0
+    this.formulaH = h || 0
+    this.zoomScale = 1
+    this.zoomW = 288
+    this.zoomH = this._zoomHeight(288)
+    this.zoomTx = 0
+    this.zoomTy = 0
+    this.zoomTransform = this._zoomTrans(0, 0)
+    this.zoomHint = this._zoomHint(1)
+    this.zoomLastTap = 0
+    this.zoomMoved = false
+    if (this.zoomTapTimer) { clearTimeout(this.zoomTapTimer); this.zoomTapTimer = null }
+    this.zoomShow = true
+  },
+
+  // 弹层单击/双击判定：两次 click < 300ms 视为双击 → 切档；单击 → 延迟 300ms 收起
+  // 发生过拖动(zoomMoved)时跳过，避免拖完图误触发收起
+  zoomClick() {
+    if (this.zoomMoved) { this.zoomMoved = false; return }
+    const now = Date.now()
+    if (this.zoomTapTimer) { clearTimeout(this.zoomTapTimer); this.zoomTapTimer = null }
+    if (this.zoomLastTap && now - this.zoomLastTap < 300) {
+      this.zoomLastTap = 0
+      this.zoomCycle()
+      return
+    }
+    this.zoomLastTap = now
+    this.zoomTapTimer = setTimeout(() => {
+      this.zoomTapTimer = null
+      this.zoomLastTap = 0
+      this.zoomClose()
+    }, 300)
+  },
+
+  // 收起弹层，复位档位
+  zoomClose() {
+    if (this.zoomTapTimer) { clearTimeout(this.zoomTapTimer); this.zoomTapTimer = null }
+    this.zoomShow = false
+    this.zoomScale = 1
+    this.zoomLastTap = 0
+    this.zoomMoved = false
+  },
+
+  // 切档 1→2→3→1 循环。切档时位移复位居中，并刷新 hint
+  zoomCycle() {
+    const next = this.zoomScale >= 3 ? 1 : this.zoomScale + 1
+    this.zoomScale = next
+    this.zoomW = 288 * next
+    this.zoomH = this._zoomHeight(this.zoomW)
+    this.zoomTx = 0
+    this.zoomTy = 0
+    this.zoomTransform = this._zoomTrans(0, 0)
+    this.zoomHint = this._zoomHint(next)
+    if (this.zoomTapTimer) { clearTimeout(this.zoomTapTimer); this.zoomTapTimer = null }
+    this.zoomLastTap = 0
+  },
+
+  // 按钮缩放：放大(+) 每次 +0.5，上限 4.0
+  zoomIn() {
+    this._applyButtonZoom(0.5)
+  },
+
+  // 按钮缩放：缩小(-) 每次 -0.5，下限 0.5
+  zoomOut() {
+    this._applyButtonZoom(-0.5)
+  },
+
+  // 按钮缩放公共逻辑：清掉单击/双击计时器，按 delta 调整档位并复位位移
+  _applyButtonZoom(delta) {
+    if (this.zoomTapTimer) { clearTimeout(this.zoomTapTimer); this.zoomTapTimer = null }
+    this.zoomLastTap = 0
+    var next = this.zoomScale + delta
+    if (next < 0.5) next = 0.5
+    if (next > 4.0) next = 4.0
+    if (next === this.zoomScale) return
+    this.zoomScale = next
+    this.zoomW = 288 * next
+    this.zoomH = this._zoomHeight(this.zoomW)
+    this.zoomTx = 0
+    this.zoomTy = 0
+    this.zoomTransform = this._zoomTrans(0, 0)
+    this.zoomHint = this._zoomHint(next)
+  },
+
+  // touchstart：记录起始手指坐标和起始累计位移
+  zoomTouchStart(e) {
+    const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
+    if (!t) return
+    this.zoomStartX = t.clientX
+    this.zoomStartY = t.clientY
+    this.zoomStartTx = this.zoomTx
+    this.zoomStartTy = this.zoomTy
+    this.zoomMoved = false
+  },
+
+  // touchmove：跟手平移 —— 累计位移 = 起始位移 + 手指位移，实时刷 transform
+  zoomTouchMove(e) {
+    const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
+    if (!t) return
+    const dx = t.clientX - this.zoomStartX
+    const dy = t.clientY - this.zoomStartY
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      this.zoomMoved = true
+      // 一旦判定为拖动，立即清掉待决的单击 timer/lastTap
+      if (this.zoomTapTimer) { clearTimeout(this.zoomTapTimer); this.zoomTapTimer = null }
+      this.zoomLastTap = 0
+    }
+    this.zoomTx = this.zoomStartTx + dx
+    this.zoomTy = this.zoomStartTy + dy
+    this.zoomTransform = this._zoomTrans(this.zoomTx, this.zoomTy)
+  },
+
+  // touchend：位移保持，click 判定另走 zoomClick
+  zoomTouchEnd() {
+    // 位移保留，不做惯性
+  },
+
+  // 按原图宽高比算当前档位像素高（避免拉伸变形）
+  _zoomHeight(w) {
+    if (this.formulaW > 0 && this.formulaH > 0) {
+      return Math.round(this.formulaH * w / this.formulaW)
+    }
+    return 0
+  },
+
+  // Vela 动态 transform 必须 JSON.stringify 对象
+  _zoomTrans(x, y) {
+    return JSON.stringify({ translateX: Math.round(x) + 'px', translateY: Math.round(y) + 'px' })
+  },
+
+  // 预拼提示文字（scale 格式化为一位小数，如 1.0x / 2.0x）
+  _zoomHint(scale) {
+    return scale.toFixed(1) + 'x · 单击收起 · 双击切档 · 拖动看全'
+  }
+}
+</script>
+
+<style>
+  @import '../../common/style.css';
+</style>

@@ -1,0 +1,515 @@
+<template>
+  <div class="container">
+    <!-- 返回按钮 -->
+    <img
+      class="leftButton top"
+      src="/common/images/back.png"
+      @click="goBack"
+      static
+    />
+    <!-- 时间 -->
+    <text class="time">{{ currentTime }}</text>
+    <!-- 标题 -->
+    <text class="title" static>
+      <span>导入知识点</span>
+    </text>
+
+    <div style="height: 6px;"></div>
+
+    <!-- 滚动容器 -->
+    <div class="box">
+      <scroll class="box" scroll-x="false" scroll-y="true" bounces="true">
+        <!-- 监听状态卡 -->
+        <div class="imp-item">
+          <div class="imp-card imp-card--status">
+            <div class="imp-status-row">
+              <text class="imp-status-dot {{ listening ? 'imp-status-dot--on' : 'imp-status-dot--off' }}" static>●</text>
+              <text class="imp-status-text">{{ listening ? '正在监听手机端推送' : '未监听手机端' }}</text>
+            </div>
+            <text class="imp-status-hint" static>{{ featureHint }}</text>
+          </div>
+        </div>
+
+        <!-- 本地自验入口:复用 extras/sample,和手机端发来的走同一条 receiveImportedJSON -->
+        <div class="imp-item">
+          <div class="imp-card imp-card--action" @click="importSample">
+            <text class="imp-action-title">导入示例知识点</text>
+            <text class="imp-action-hint" static>本地自验:整条链路就这一下</text>
+          </div>
+        </div>
+
+        <!-- 已导入科目(按科目删除入口;无导入科目时整区不渲染) -->
+        <div class="imp-item" if="{{importedSubjects.length}}">
+          <div class="imp-card imp-card--manager">
+            <text class="imp-section-title" static>已导入科目</text>
+            <div class="imp-subject-row" for="{{importedSubjects}}">
+              <div class="imp-subject-row__main" @click="onSubjectRowTap($idx)">
+                <text class="imp-subject-name">{{ $item.name }}</text>
+                <text class="imp-subject-count" static>{{ $item.count }} 条</text>
+              </div>
+              <text class="imp-subject-del {{ $item.confirming ? 'imp-subject-del--confirm' : '' }}"
+                @click="onSubjectDelete($idx)"
+                static>
+                {{ $item.confirming ? '确认删除?' : '删除' }}
+              </text>
+            </div>
+            <text class="imp-section-hint" static>点击「删除」进入确认，4 秒内再点确认才真正删除</text>
+          </div>
+        </div>
+
+        <!-- 事件日志(真接收/自验/落盘结果肉眼可见) -->
+        <div class="imp-log-block">
+          <text class="imp-log-title" static>事件日志</text>
+          <div class="imp-log-line" for="{{logs}}">
+            <text class="imp-log-text">{{ $item }}</text>
+          </div>
+          <text class="imp-log-empty" if="{{ !logs.length }}" static>暂无事件</text>
+        </div>
+
+        <!-- 底部占位 -->
+        <div class="padding"></div>
+      </scroll>
+    </div>
+  </div>
+</template>
+
+<script>
+import app from '@system.app'
+import router from '@system.router'
+import prompt from '@system.prompt'
+import { onTimeChange, offTimeChange } from '../../common/clock'
+
+// 复用 extras/sample 作为本地自验假数据(和手机端将来发来的同构)。
+// 走 store 的 import 路线,跟 knowledgeData 同一条加载链,真机已验可用。
+import samplePkg from '../../common/extras/sample'
+
+export default {
+  private: {
+    currentTime: "00:00",
+    // 是否在监听手机端 interconnect 推送(单例已在 app.ux 建立)。
+    listening: false,
+    // feature 探测结果提示
+    featureHint: '',
+    // 仅留末 30 条事件,小屏不堆
+    logs: [],
+    // 已导入(外部)科目列表:每项 {name, count, confirming}。confirming 为 true 时该行处于"点确认才删"态。
+    importedSubjects: [],
+    // 导入科目标签:清除上一轮确认态倒计时的 timer id,每次确认态刷新时 clearTimeout 防串行。
+    __confirmTimer: null,
+    // 时钟回调引用(用于 onDestroy 正确解订)
+    __clockFn: null
+  },
+
+  onInit() {
+    this.__clockFn = (t) => { this.currentTime = t }
+    onTimeChange(this.__clockFn)
+    this._probeFeature()
+    this._attachReceiveLog()
+    // 首次渲染已导入科目列表(若刚启动读完持久化数据,已能在这里看到;异步读回尚未完成时为空,
+    // userdata-loaded 事件会再触发一次 _refreshImported 补齐)。
+    this._refreshImported()
+  },
+
+  onDestroy() {
+    if (this.__clockFn) {
+      offTimeChange(this.__clockFn)
+      this.__clockFn = null
+    }
+    // 解订接收事件回调,避免页面销毁后 app.ux 仍持有它的引用
+    if (this.__unsubReceive) {
+      this.__unsubReceive()
+    }
+    if (this.__confirmTimer) {
+      clearTimeout(this.__confirmTimer)
+      this.__confirmTimer = null
+    }
+  },
+
+  goBack() {
+    router.back()
+  },
+
+  log(s) {
+    // 整体替换数组赋值(Vela 数据绑定的可靠触发方式,比 push/splice 更稳);
+    // 末 30 条滚动,旧的从头丢。
+    const next = this.logs.concat([s])
+    if (next.length > 30) {
+      next.splice(0, next.length - 30)
+    }
+    this.logs = next
+  },
+
+  // 探测 interconnect/file feature,给状态卡一个准确提示。
+  _probeFeature() {
+    const canIc = app.canIUse('@system.interconnect')
+    const canFile = app.canIUse('@system.file')
+    if (canIc && canFile) {
+      this.featureHint = '手机端配套 app 发送知识点 JSON 后自动接收并入'
+    } else if (canIc && !canFile) {
+      this.featureHint = '可接收推送但无法落盘(重启丢失),仅内存态'
+    } else {
+      this.featureHint = '本机不支持 interconnect,仅可本地自验导入'
+    }
+    this.listening = !!this.$app.$def.interconnect
+  },
+
+  // 订阅 app.ux 的接收事件广播(interconnect 真接收 / 自验都会广播),在页内记日志。
+  // 真接收的 parse+merge+落盘全在 app.ux 单例里做(跨页存活、不依赖本页生命周期),
+  // 本页只负责"显示有没收到、收了多大、落盘成不成"。
+  _attachReceiveLog() {
+    this.__unsubReceive = this.$app.$def.onReceive((evt) => {
+      if (!evt) return
+      if (evt.kind === 'imported') {
+        const ps = evt.persisted ? ('已落盘') : ('未落盘 code=' + (evt.persistCode || ''))
+        this.log('收到并入 len=' + evt.len + ' 字符,' + ps)
+      } else if (evt.kind === 'empty') {
+        this.log('收到空消息')
+      } else if (evt.kind === 'userdata-changed') {
+        // 用户数据变更(删除/外部变更):刷新已导入科目列表。
+        this._refreshImported()
+      } else if (evt.kind === 'userdata-loaded') {
+        // 持久化数据异步读回完成:补齐首次渲染可能为空的已导入科目列表。
+        this._refreshImported()
+      }
+    })
+    if (this.$app.$def.interconnect) {
+      this.log('已挂接收监听,等待手机端推送…')
+    }
+  },
+
+  // 本地自验:把 extras/sample 当成"手机端刚发来的 JSON"喂同一条 receiveImportedJSON。
+  // 串→对象这一步都跟真接收一致(serialize 后再交给 app 统一入口 parse),整套自验贴近真机联调。
+  importSample() {
+    prompt.showToast({ message: '导入中...', duration: 800 })
+    try {
+      const jsonStr = JSON.stringify(samplePkg)
+      const r = this.$app.$def.receiveImportedJSON(jsonStr)
+      if (r.ok) {
+        this.log('自验导入成功 len=' + r.len + (r.persisted ? ' 已落盘' : ' 未落盘'))
+        prompt.showToast({ message: '已导入示例知识点', duration: 1500 })
+        // 自验并入后刷新已导入科目列表
+        this._refreshImported()
+      } else {
+        this.log('自验导入失败 reason=' + r.reason)
+        prompt.showToast({ message: '导入失败:' + r.reason, duration: 1500 })
+      }
+    } catch (e) {
+      this.log('自验导入异常 ' + e)
+      prompt.showToast({ message: '导入异常', duration: 1500 })
+    }
+  },
+  // 按科目删除:已导入用户科目的管理入口。只处理外部的(imported=true),内置同名延伸条目不进此区。
+  // _refreshImported 把 getSubjects 里 imported 的子集平铺为 {name,count,confirming} 列表(整体替换赋值触发绑定)。
+  _refreshImported() {
+    const all = this.$app.$def.store.getSubjects()
+    const next = []
+    for (let i = 0; i < all.length; i++) {
+      if (all[i].imported) {
+        next.push({ name: all[i].name, count: all[i].count, confirming: false })
+      }
+    }
+    this.importedSubjects = next
+  },
+  // 点行内文字区：当前不做跳转(仅作为视觉点击区,删除由右侧按钮独立处理)。
+  onSubjectRowTap(_idx) {
+    void _idx
+    // 留空占位，后续如需跳转到该科目详情可在此处加 router.push。
+  },
+  // 点右侧删除按钮:首次点击置 confirming=true(红色按钮态)并起 4s 倒计时;
+  // confirming 态下再点 → 真删;倒计时归零 → 还原。整行点击不做删除(防止误触)。
+  // 全部用整体替换赋值(不就地改对象属性),保证 Vela 数据绑定触发。
+  onSubjectDelete(idx) {
+    if (idx < 0 || idx >= this.importedSubjects.length) return
+    const wasConfirming = this.importedSubjects[idx].confirming
+    const itemName = this.importedSubjects[idx].name
+    // 归位上一轮确认态倒计时
+    if (this.__confirmTimer) { clearTimeout(this.__confirmTimer); this.__confirmTimer = null }
+    // 整体替换:点击行置 confirming=(wasConfirming?false:true),其余行全 false
+    const next = []
+    for (let j = 0; j < this.importedSubjects.length; j++) {
+      next.push({
+        name: this.importedSubjects[j].name,
+        count: this.importedSubjects[j].count,
+        confirming: (j === idx ? !wasConfirming : false)
+      })
+    }
+    this.importedSubjects = next
+    if (wasConfirming) {
+      // 已在确认态(confirming 刚被我们清成 false,此处是真删分支) → 调 app.ux 删除
+      const result = this.$app.$def.removeImportedSubject(itemName)
+      if (result && result.ok) {
+        prompt.showToast({ message: '已删除「' + itemName + '」', duration: 1500 })
+        this._refreshImported()
+      } else {
+        prompt.showToast({ message: '删除失败', duration: 2000 })
+        // 还原该项确认态让用户可重试:整体替换赋值
+        const retry = []
+        for (let k = 0; k < this.importedSubjects.length; k++) {
+          retry.push({
+            name: this.importedSubjects[k].name,
+            count: this.importedSubjects[k].count,
+            confirming: (k === idx)
+          })
+        }
+        this.importedSubjects = retry
+      }
+    } else {
+      // 刚进入确认态:起 4s 倒计时自动还原
+      this.__confirmTimer = setTimeout(() => {
+        const restore = []
+        for (let k = 0; k < this.importedSubjects.length; k++) {
+          restore.push({
+            name: this.importedSubjects[k].name,
+            count: this.importedSubjects[k].count,
+            confirming: false
+          })
+        }
+        this.importedSubjects = restore
+        this.__confirmTimer = null
+      }, 4000)
+    }
+  }
+}
+</script>
+
+<style>
+@import '../../common/style.css';
+
+.container {
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  background-color: #0A0A0C;
+  height: 100%;
+  width: 100%;
+  padding: 8px 0;
+}
+
+.title {
+  position: relative;
+  display: flex;
+  justify-items: center;
+  align-items: center;
+  font-size: 32px;
+  font-weight: bold;
+  color: #FFFFFF;
+}
+
+.time {
+  position: relative;
+  top: 4px;
+  display: flex;
+  justify-items: center;
+  align-items: center;
+  font-size: 22px;
+  font-weight: bold;
+  color: rgba(255,255,255,0.5);
+}
+
+.leftButton {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  width: 72px;
+  height: 72px;
+}
+
+.box {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+}
+
+.padding {
+  height: 90px;
+}
+
+/* ---------- 导入页卡片 ---------- */
+.imp-item {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0 12px;
+  margin-bottom: 10px;
+}
+
+.imp-card {
+  flex-direction: column;
+  width: 100%;
+  background-color: #18181A;
+  border: 1px solid #2A2A2E;
+  border-radius: 20px;
+  padding: 16px 20px;
+}
+
+/* 状态卡 */
+.imp-card--status {
+  align-items: flex-start;
+}
+
+.imp-status-row {
+  flex-direction: row;
+  align-items: center;
+}
+
+.imp-status-dot {
+  font-size: 18px;
+  margin-right: 8px;
+  line-height: 22px;
+}
+
+.imp-status-dot--on {
+  color: #5BB85B;
+}
+
+.imp-status-dot--off {
+  color: #98989E;
+}
+
+.imp-status-text {
+  color: #FFFFFF;
+  font-size: 24px;
+  font-weight: bold;
+  line-height: 32px;
+}
+
+.imp-status-hint {
+  color: rgba(255,255,255,0.6);
+  font-size: 20px;
+  line-height: 28px;
+  margin-top: 8px;
+}
+
+/* 动作卡 */
+.imp-card--action {
+  align-items: center;
+  justify-content: center;
+}
+
+.imp-action-title {
+  color: #7899BB;
+  font-size: 28px;
+  font-weight: bold;
+}
+
+.imp-action-hint {
+  color: rgba(255,255,255,0.6);
+  font-size: 20px;
+  margin-top: 6px;
+  line-height: 28px;
+  text-align: center;
+}
+
+/* 管理卡：已导入科目列表 */
+.imp-card--manager {
+  align-items: flex-start;
+}
+
+.imp-section-title {
+  color: #FFFFFF;
+  font-size: 26px;
+  font-weight: bold;
+  margin-bottom: 12px;
+}
+
+.imp-subject-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.imp-subject-row__main {
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+}
+
+.imp-subject-name {
+  color: #CCCCCC;
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.imp-subject-count {
+  color: #7899BB;
+  font-size: 20px;
+  background-color: rgba(120, 153, 187, 0.12);
+  border: 1px solid rgba(120, 153, 187, 0.3);
+  border-radius: 10px;
+  padding: 2px 8px;
+  margin-left: 10px;
+  flex-shrink: 0;
+  line-height: 24px;
+}
+
+.imp-subject-del {
+  color: #E57373;
+  font-size: 22px;
+  font-weight: bold;
+  background-color: rgba(229, 115, 115, 0.12);
+  border: 1px solid rgba(229, 115, 115, 0.35);
+  border-radius: 10px;
+  padding: 4px 14px;
+  margin-left: 12px;
+  flex-shrink: 0;
+  line-height: 28px;
+}
+
+.imp-subject-del--confirm {
+  color: #FFFFFF;
+  background-color: #E53935;
+  border-color: #E53935;
+  animation: imp-pulse 1s ease-in-out infinite;
+}
+
+@keyframes imp-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.imp-section-hint {
+  color: #6A6A70;
+  font-size: 18px;
+  line-height: 24px;
+  margin-top: 4px;
+}
+
+/* ---------- 事件日志 ---------- */
+.imp-log-block {
+  flex-direction: column;
+  width: 100%;
+  padding: 0 12px;
+  margin-top: 4px;
+}
+
+.imp-log-title {
+  color: rgba(255,255,255,0.6);
+  font-size: 22px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.imp-log-line {
+  flex-direction: row;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+
+.imp-log-text {
+  color: rgba(255,255,255,0.6);
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.imp-log-empty {
+  color: rgba(255,255,255,0.6);
+  font-size: 20px;
+  line-height: 28px;
+}
+
+</style>

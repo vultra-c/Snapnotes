@@ -1,0 +1,532 @@
+<import name="input-method" src="../../components/InputMethod/InputMethod.ux"></import>
+
+<template>
+  <div class="page" style="flex-direction: column;" @swipe="onSwipe">
+
+    <!-- 顶部栏：沿用主页风格（hd.png + 返回 + 时间 + 标题），全部绝对定位 -->
+    <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
+    <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
+    <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>
+    <text static style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center;">搜索</text>
+
+    <!-- 搜索框（胶囊形，仿 Snapnotes .search-bar__inner），位于顶部栏下方 -->
+    <div class="search-bar" @click="toggleKeyboard">
+      <img static src="/common/images/search.png" class="search-bar__icon" />
+      <div class="search-bar__textwrap">
+        <text class="search-bar__text" show="{{textValue.length > 0}}">{{textValue}}</text>
+        <text class="search-bar__ph" show="{{textValue.length == 0}}">输入要搜索的内容</text>
+      </div>
+    </div>
+
+    <!-- 清空按钮：独立兄弟元素，避免与搜索框点击冲突（同原实现思路） -->
+    <div class="clear-btn" show="{{textValue.length > 0}}" @click="clearSearch">
+      <text class="clear-icon" static>×</text>
+    </div>
+
+    <!-- 搜索结果列表（增量渲染：首屏 12 条，触底 +N；键盘弹起时隐藏，避免与 255px 键盘争抢空间） -->
+    <scroll class="result-scroll" show="{{hideKeyboard}}" scroll-x="false" scroll-y="true" bounces="true" @scrollbottom="loadMore">
+      <!-- 进页加载占位（haystack 分片构建期间显示，同 chat/detail 范式） -->
+      <div class="search-loading" if="{{!ready}}">
+        <text class="search-loading__text" static>加载中...</text>
+      </div>
+
+      <!-- 结果卡片：学科名(蓝) + 标题(白粗) + 摘要/描述(灰) -->
+      <div class="result-item" if="{{ready}}" for="{{renderedResults}}" tid="id" @click="onResultClick($item)">
+        <div class="result-card">
+          <text class="result-subject">{{$item.subjectLabel}}</text>
+          <text class="result-title">{{$item.title}}</text>
+          <text class="result-desc" show="{{$item.desc.length > 0}}">{{$item.desc}}</text>
+        </div>
+      </div>
+
+      <!-- 空态 -->
+      <div class="result-empty" if="{{ready && searchResults.length === 0}}">
+        <text class="result-empty__text" static>{{hasSearched ? '暂无相关结果' : '点击搜索框输入关键词'}}</text>
+      </div>
+
+      <div class="scroll-pad"></div>
+    </scroll>
+
+    <!-- 输入法键盘：组件自带 position:absolute;bottom:0 定位 -->
+    <input-method hide="{{hideKeyboard}}" keyboardtype="QWERTY" screentype="rect" maxlength="5" vibratemode="{{vibrateMode}}" @complete="onComplete" @delete="onDelete" @visibilityChange="onKeyboardVisibilityChange"></input-method>
+
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import dataManager from '../../common/utils/dataManager.js'
+import { getNowTime } from '../../common/utils/timeUtil.js'
+
+export default {
+  private: {
+    nowTime: '00:00',
+    timer: null,
+    textValue: '',
+    hideKeyboard: true,          // true=键盘隐藏（与 InputMethod.hide 同向）
+    searchResults: [],           // 全量命中结果
+    renderedResults: [],         // searchResults 的前缀切片（触底增量渲染，DOM 数量受控）
+    renderedCount: 12,           // 已渲染条数（首批 12，触底每次追加）
+    allItems: [],                // 知识点扁平条目 + 预算 haystack 缓存
+    hasSearched: false,
+    ready: false,                // haystack 是否构建完成
+    vibrateMode: '',
+    // 内部定时器/守卫（不参与绑定）
+    __searchTimer: null,
+    __hayTimer: null,
+    __loadTimer: null,
+    __loadingMore: false,
+    __searchToken: 0             // 过期搜索守卫：异步文件搜索返回时校验，避免旧结果覆盖新查询
+  },
+  protected: {
+    scope: 'global',             // 'global' 全局搜 / 'single' 仅搜某个文件
+    searchPath: ''               // single 模式下的目标文件路径
+  },
+
+  onInit() {
+    this.nowTime = getNowTime()
+    this.timer = setInterval(() => {
+      if (this.$valid) {
+        this.nowTime = getNowTime()
+      }
+    }, 60000)
+    // 震动模式：读 $def 缓存，同步给 InputMethod
+    this.vibrateMode = this.$app.$def.getKeyboardVibrateMode()
+    // 进页即构建知识点 haystack（含预算缓存），但不渲染结果，首屏只画占位
+    this.buildHaystack()
+  },
+
+  onDestroy() {
+    if (this.timer) {
+      clearInterval(this.timer)
+      this.timer = null
+    }
+    if (this.__hayTimer) {
+      clearTimeout(this.__hayTimer)
+      this.__hayTimer = null
+    }
+    if (this.__searchTimer) {
+      clearTimeout(this.__searchTimer)
+      this.__searchTimer = null
+    }
+    if (this.__loadTimer) {
+      clearTimeout(this.__loadTimer)
+      this.__loadTimer = null
+    }
+  },
+
+  // 分片构建知识点 haystack：把 学科名/标题/描述/要点正文 拼成单串并转小写，
+  // 之后每次搜索只做 indexOf，不再每键重新 join+toLowerCase（输入卡顿根因）。
+  // 数据源走 knowledgeStore.getAllItems()（内置 + 用户导入合并后的全量扁平条目）。
+  // getAllItems 按科目分组连续返回，故用「上一科目名」判定来累计每科内 index，
+  // 该 index 与 content 页 getKnowledge(subject)[index] 完全对齐，用于跳转。
+  buildHaystack() {
+    setTimeout(() => {
+      const store = this.$app.$def && this.$app.$def.store
+      if (!store || !store.getAllItems) {
+        this.ready = true
+        return
+      }
+      const items = store.getAllItems()
+      const all = []
+      const CHUNK = 30
+      let i = 0
+      let lastSubject = null
+      let subjIdx = -1
+      const step = () => {
+        const end = Math.min(i + CHUNK, items.length)
+        for (; i < end; i++) {
+          const it = items[i]
+          // 同科目条目在 getAllItems 中连续，按计数还原科内索引
+          if (it.subjectName !== lastSubject) {
+            lastSubject = it.subjectName
+            subjIdx = 0
+          } else {
+            subjIdx++
+          }
+          const haystack = (
+            (it.subjectName || '') + '\n' +
+            (it.title || '') + '\n' +
+            (it.desc || '') + '\n' +
+            (it.points || []).join('\n')
+          ).toLowerCase()
+          all.push({
+            id: 'kd_' + i,                                  // 稳定唯一 id，供 for tid 复用
+            type: 'knowledge',
+            subjectName: it.subjectName,
+            subjectLabel: it.subjectName,                   // 卡片蓝色标签
+            knowledgeSubject: it.subjectName,
+            knowledgeIndex: subjIdx,
+            title: it.title || ('知识点' + (i + 1)),
+            desc: (it.desc && it.desc.length > 0) ? it.desc : ((it.points && it.points[0]) || ''),
+            haystack: haystack
+          })
+        }
+        if (i < items.length) {
+          this.__hayTimer = setTimeout(step, 0)
+        } else {
+          this.__hayTimer = null
+          this.allItems = all
+          this.ready = true
+          // 构建完成时若已有查询词，补搜一次（用户进页极快输入的兜底）
+          if (this.textValue && this.textValue.trim().length > 0) {
+            this.doSearch()
+          }
+        }
+      }
+      step()
+    }, 50)
+  },
+
+  toggleKeyboard() {
+    this.hideKeyboard = !this.hideKeyboard
+  },
+
+  // 键盘内部 hide 切换时反向同步本页 hideKeyboard 状态（收回闭环）
+  onKeyboardVisibilityChange(evt) {
+    if (evt && evt.detail && evt.detail.visible === false) {
+      this.hideKeyboard = true
+    }
+  },
+
+  // 输入法追加字符；空格触发即时搜索（保留原交互），其余字符走防抖
+  onComplete(e) {
+    const content = e.detail.content
+    if (content === ' ') {
+      if (this.textValue.length > 0) {
+        this.doSearch()
+      }
+      return
+    }
+    this.textValue = this.textValue + content
+    this.scheduleSearch()
+  },
+
+  onDelete() {
+    if (this.textValue.length > 0) {
+      this.textValue = this.textValue.slice(0, -1)
+      this.scheduleSearch()
+    }
+  },
+
+  clearSearch() {
+    this.textValue = ''
+    this._cancelLoadBatch()
+    if (this.__searchTimer) {
+      clearTimeout(this.__searchTimer)
+      this.__searchTimer = null
+    }
+    this.hasSearched = false
+    this.searchResults = []
+    this.renderedResults = []
+    this.renderedCount = 12
+  },
+
+  // 防抖 220ms：连续敲键只在停顿后搜一次，避免每键全量扫描
+  scheduleSearch() {
+    if (this.__searchTimer) {
+      clearTimeout(this.__searchTimer)
+    }
+    this.__searchTimer = setTimeout(() => {
+      this.__searchTimer = null
+      this.doSearch()
+    }, 220)
+  },
+
+  // 取消在途的触底追加批次（新搜索/清空时调用，避免旧批次把结果追加进新结果集）
+  _cancelLoadBatch() {
+    this.__loadingMore = false
+    if (this.__loadTimer) {
+      clearTimeout(this.__loadTimer)
+      this.__loadTimer = null
+    }
+  },
+
+  // 执行搜索：知识点 haystack（同步） + 文件正文（异步 dataManager）。
+  // 进入即取消任何挂起的防抖定时器（空格触发即时搜索时，避免后续防抖再覆盖一次）。
+  doSearch() {
+    if (this.__searchTimer) {
+      clearTimeout(this.__searchTimer)
+      this.__searchTimer = null
+    }
+    const keyword = this.textValue.trim()
+    if (keyword.length === 0) {
+      this._cancelLoadBatch()
+      this.hasSearched = false
+      this.searchResults = []
+      this.renderedResults = []
+      this.renderedCount = 12
+      return
+    }
+    this.hasSearched = true
+    const token = ++this.__searchToken
+    const kw = keyword.toLowerCase()
+
+    let list = []
+
+    // 1) 知识点搜索：haystack 已在 onInit 预算缓存，这里只做 indexOf
+    const all = this.allItems
+    for (let i = 0; i < all.length; i++) {
+      if (all[i].haystack.indexOf(kw) !== -1) {
+        list.push(all[i])
+      }
+    }
+
+    // 2) 文件正文搜索（dataManager）
+    let fileSearchPromise
+    if (this.scope === 'single' && this.searchPath) {
+      // 单文件范围：在指定文件内搜全部匹配位置
+      fileSearchPromise = dataManager.searchContentInFile(this.searchPath, keyword).then((matches) => {
+        const name = dataManager.getUnifiedNodeName(this.searchPath)
+        ;(matches || []).forEach((m, idx) => {
+          list.push({
+            id: 'file_' + idx + '_' + m.matchStart,
+            type: 'file',
+            subjectLabel: '文件',
+            title: name,
+            desc: m.snippet || '',
+            path: this.searchPath,
+            matchStart: m.matchStart
+          })
+        })
+      })
+    } else {
+      // 全局：搜全部考点文件正文
+      fileSearchPromise = dataManager.searchContent(keyword).then((fileResults) => {
+        ;(fileResults || []).forEach((item, idx) => {
+          list.push({
+            id: 'file_' + idx + '_' + item.path + ':' + item.matchStart,
+            type: 'file',
+            subjectLabel: '文件',
+            title: item.name,
+            desc: item.snippet || '',
+            path: item.path,
+            matchStart: item.matchStart
+          })
+        })
+      })
+    }
+
+    const finishSearch = () => {
+      if (!this.$valid) return
+      // 过期守卫：期间用户又输入了新关键词，丢弃本次（已被更新的 token 取代）
+      if (token !== this.__searchToken) return
+
+      // 新搜索：取消上一轮触底批次，重置增量渲染计数，只渲染前 12 条
+      this._cancelLoadBatch()
+      this.searchResults = list
+      this.renderedCount = Math.min(12, list.length)
+      this._applyRenderedResults()
+    }
+
+    fileSearchPromise.then(() => {
+      finishSearch()
+    }, (e) => {
+      console.log('search content error: ' + e)
+      finishSearch()
+    })
+  },
+
+  // 增量渲染：renderedResults = searchResults 前缀切片（前 renderedCount 条）
+  _applyRenderedResults() {
+    const n = Math.min(this.renderedCount, this.searchResults.length)
+    this.renderedResults = this.searchResults.slice(0, n)
+  },
+
+  // scrollbottom 触底：防连发守卫 + 分批追加（同 knowledge/chat 页范式）
+  loadMore() {
+    if (this.__loadingMore) return
+    const total = this.searchResults.length
+    if (this.renderedCount >= total) return
+    this.__loadingMore = true
+    const BATCH = 6
+    const target = Math.min(this.renderedCount + 20, total)
+    const tick = () => {
+      this.renderedCount = Math.min(this.renderedCount + BATCH, target)
+      this._applyRenderedResults()
+      if (this.renderedCount < target) {
+        this.__loadTimer = setTimeout(tick, 0)
+      } else {
+        this.__loadTimer = null
+        this.__loadingMore = false
+      }
+    }
+    tick()
+  },
+
+  // 点击结果：知识点跳内容页，文件跳阅读器
+  onResultClick(item) {
+    if (!item) return
+    if (item.type === 'knowledge') {
+      router.push({
+        uri: '/pages/content',
+        params: {
+          knowledgeSubject: item.knowledgeSubject,
+          knowledgeIndex: item.knowledgeIndex
+        }
+      })
+      return
+    }
+    router.push({
+      uri: '/pages/reader',
+      params: {
+        path: item.path,
+        matchStart: item.matchStart
+      }
+    })
+  },
+
+  goBack() {
+    router.back()
+  },
+
+  onSwipe(e) {
+    if (e.direction === 'right') {
+      router.back()
+    }
+  },
+
+  onBackPress() {
+    router.back()
+    return true
+  }
+}
+</script>
+
+<style>
+  @import '../../common/style.css';
+
+  /* ---------- 搜索框（胶囊形） ---------- */
+  .search-bar {
+    position: absolute;
+    left: 6px;
+    top: 108px;
+    width: 324px;
+    height: 56px;
+    background-color: #18181A;
+    border: 1px solid #2A2A2E;
+    border-radius: 28px;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 18px;
+    padding-right: 56px;        /* 右侧留出清空按钮空间，避免文字被遮 */
+  }
+  .search-bar__icon {
+    width: 28px;
+    height: 28px;
+    margin-right: 12px;
+  }
+  .search-bar__textwrap {
+    flex: 1;
+    height: 56px;
+    justify-content: center;
+  }
+  .search-bar__text {
+    font-size: 24px;
+    font-weight: bold;
+    color: #FFFFFF;
+    lines: 1;
+    text-overflow: ellipsis;
+  }
+  .search-bar__ph {
+    font-size: 24px;
+    color: rgba(255, 255, 255, 0.3);
+    lines: 1;
+  }
+
+  /* ---------- 清空按钮（独立兄弟元素，覆盖搜索框右侧） ---------- */
+  .clear-btn {
+    position: absolute;
+    left: 286px;
+    top: 116px;
+    width: 40px;
+    height: 40px;
+    background-color: #333333;
+    border-radius: 20px;
+    justify-content: center;
+    align-items: center;
+  }
+  .clear-icon {
+    font-size: 28px;
+    color: rgba(255, 255, 255, 0.7);
+    text-align: center;
+  }
+
+  /* ---------- 结果滚动区 ---------- */
+  .result-scroll {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    top: 172px;
+    bottom: 8px;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* ---------- 结果卡片 ---------- */
+  .result-item {
+    width: 100%;
+    margin-bottom: 8px;
+  }
+  .result-card {
+    width: 100%;
+    background-color: #1C1C1E;
+    border-radius: 24px;
+    padding: 12px 20px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .result-subject {
+    color: #7899BB;
+    font-size: 22px;
+    lines: 1;
+    text-overflow: ellipsis;
+    width: 100%;
+    margin-bottom: 4px;
+  }
+  .result-title {
+    color: #FFFFFF;
+    font-size: 28px;
+    font-weight: bold;
+    lines: 1;
+    text-overflow: ellipsis;
+    width: 100%;
+    margin-bottom: 4px;
+  }
+  .result-desc {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 20px;
+    lines: 1;
+    text-overflow: ellipsis;
+    width: 100%;
+  }
+
+  /* ---------- 空态 / 加载占位 ---------- */
+  .result-empty {
+    width: 100%;
+    height: 200px;
+    justify-content: center;
+    align-items: center;
+  }
+  .result-empty__text {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 24px;
+    text-align: center;
+  }
+  .search-loading {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    width: 100%;
+  }
+  .search-loading__text {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 24px;
+  }
+
+  .scroll-pad {
+    height: 24px;
+    width: 100%;
+  }
+</style>

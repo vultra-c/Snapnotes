@@ -178,13 +178,26 @@
   color: rgba(255, 255, 255, 0.6);
 }
 
-/* ---------- 左滑删除按钮 ---------- */
+/* ---------- 左滑删除（平移效果） ---------- */
+.swipe-wrap {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  flex-direction: row;
+}
+.swipe-content {
+  flex-direction: row;
+  flex-shrink: 0;
+  align-items: center;
+  height: 100%;
+}
 .item-main {
-  flex: 1;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
   height: 100%;
+  width: 284px;
+  flex-shrink: 0;
 }
 .swipe-delete {
   width: 100px;
@@ -193,6 +206,7 @@
   border-radius: 28px;
   justify-content: center;
   align-items: center;
+  flex-shrink: 0;
 }
 .swipe-delete-text {
   color: white;

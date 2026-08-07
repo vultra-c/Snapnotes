@@ -10,17 +10,23 @@
     <!-- 文件夹列表 -->
     <list class="list" id="homeList" if="{{allItems.length > 0}}">
       <list-item for="{{visibleItems}}" tid="id" class="item" type="folder"
-        @click="onItemClick($item)"
-        @swipe="onItemSwipe($item)">
-        <div class="item-main">
-          <div class="item-content">
-            <text class="itemtext">{{$item.name}}</text>
-            <text class="itemtext2">{{$item.subtitle}}</text>
+        @click="onItemClick($item)">
+        <div class="swipe-wrap" 
+          @touchstart="onItemTouchStart($item, $event)"
+          @touchmove="onItemTouchMove($item, $event)"
+          @touchend="onItemTouchEnd($event)">
+          <div class="swipe-content" style="margin-left: {{swipedId === $item.id ? '-100px' : '0px'}};">
+            <div class="item-main">
+              <div class="item-content">
+                <text class="itemtext">{{$item.name}}</text>
+                <text class="itemtext2">{{$item.subtitle}}</text>
+              </div>
+              <img static src="/common/images/enter.png" class="arrow" />
+            </div>
+            <div class="swipe-delete" @click="onDeleteClick($item)">
+              <text class="swipe-delete-text">删除</text>
+            </div>
           </div>
-          <img static if="{{swipedId !== $item.id}}" src="/common/images/enter.png" class="arrow" />
-        </div>
-        <div if="{{swipedId === $item.id}}" class="swipe-delete" @click="onDeleteClick($item)">
-          <text class="swipe-delete-text">删除</text>
         </div>
       </list-item>
       <!-- 底部占位：防止悬浮按钮遮挡最后几条科目信息 -->
@@ -184,14 +190,41 @@ export default {
     })
   },
 
-  // === 左滑出现删除按钮 ===
-  onItemSwipe(item, e) {
-    if (!e) return
-    if (e.direction === 'left') {
+  // === 纯touch事件左滑检测 ===
+  onItemTouchStart(item, e) {
+    if (!item) return
+    this._touchItem = item
+    this._touchMoved = false
+    this._touchSwiped = false
+    if (e && e.touches && e.touches[0]) {
+      this._touchStartX = e.touches[0].clientX
+    } else {
+      this._touchStartX = 0
+    }
+  },
+
+  onItemTouchMove(item, e) {
+    if (!e || !e.touches || !e.touches[0] || !this._touchItem) return
+    var dx = e.touches[0].clientX - this._touchStartX
+    this._touchMoved = true
+
+    // 左滑超过50px判定为左滑
+    if (dx < -50) {
+      this._touchSwiped = true
       // 知识点科目：仅导入科目可删除
       if (item.type === 'knowledge' && !item.imported) return
       this.swipedId = item.id
     }
+  },
+
+  onItemTouchEnd(e) {
+    if (!this._touchSwiped && !this._touchMoved && this._touchItem) {
+      // 没有滑动，视为点击
+      this.onItemClick(this._touchItem)
+    }
+    this._touchItem = null
+    this._touchMoved = false
+    this._touchSwiped = false
   },
 
   // 点击列表项

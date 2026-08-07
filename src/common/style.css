@@ -178,32 +178,6 @@
   color: rgba(255, 255, 255, 0.6);
 }
 
-/* ---------- 可见删除按钮 ---------- */
-.item-right {
-  flex-direction: row;
-  align-items: center;
-  flex-shrink: 0;
-}
-.item-delete-icon {
-  width: 40px;
-  height: 40px;
-  margin-right: 4px;
-}
-.item-delete-btn {
-  width: 56px;
-  height: 56px;
-  background-color: #D32F2F;
-  border-radius: 28px;
-  justify-content: center;
-  align-items: center;
-  margin-right: 8px;
-}
-.item-delete-text {
-  color: white;
-  font-size: 20px;
-  font-weight: bold;
-}
-
 /* ---------- 悬浮按钮（闪念小抄样式） ---------- */
 .fab {
   position: absolute;

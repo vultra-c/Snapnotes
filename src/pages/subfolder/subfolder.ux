@@ -14,15 +14,12 @@
 
     <!-- 文件夹/考点列表 -->
     <list class="list" if="{{visibleItems.length > 0}}" id="subList" @scrollbottom="loadMore">
-      <list-item for="{{visibleItems}}" tid="id" class="item" type="item" @click="onItemClick($item)">
+      <list-item for="{{visibleItems}}" tid="id" class="item" type="item" @click="onItemClick($item)" @longpress="onLongPress($item)" @touchstart="onTouchStart" @touchmove="onTouchMove">
         <div class="item-content">
           <text class="itemtext">{{$item.name}}</text>
           <text class="itemtext2">{{$item.subtitle}}</text>
         </div>
-        <div class="item-right">
-          <img static if="{{!knowledgeSubject}}" src="/common/images/bin.png" class="item-delete-icon" @click="onDeleteClick($item)" />
-          <img static src="/common/images/enter.png" class="arrow" />
-        </div>
+        <img static src="/common/images/enter.png" class="arrow" />
       </list-item>
       <!-- 触底加载指示 -->
       <list-item type="loading-more" class="loading-more" if="{{knowledgeSubject && visibleItems.length < totalCount}}">
@@ -56,6 +53,11 @@ export default {
     allItems: [],
     visibleItems: [],
     isNavigating: false,
+    longPressTriggered: false,
+    // 滑动误触防护
+    touchStartX: 0,
+    touchStartY: 0,
+    touchMoved: false,
     // 知识点分片加载
     ready: true,
     totalCount: 0
@@ -95,28 +97,32 @@ export default {
   loadTimeFormat() {
     storage.get({
       key: 'KD_TIME_FORMAT',
-      success: (data) => {
-        if (!this.$valid) return
-        if (data) {
-          this.timeFormat = data
+      success: function(data) {
+        if (this.$valid) {
+          if (data) {
+            this.timeFormat = data
+          }
+          var now = new Date()
+          var hh = String(now.getHours()).padStart(2, '0')
+          var mm = String(now.getMinutes()).padStart(2, '0')
+          this.nowTime = this._fmtClock(hh + ':' + mm)
         }
-        var now = new Date()
-        var hh = String(now.getHours()).padStart(2, '0')
-        var mm = String(now.getMinutes()).padStart(2, '0')
-        this.nowTime = this._fmtClock(hh + ':' + mm)
-      },
-      fail: () => {
-        if (!this.$valid) return
-        var now = new Date()
-        var hh = String(now.getHours()).padStart(2, '0')
-        var mm = String(now.getMinutes()).padStart(2, '0')
-        this.nowTime = this._fmtClock(hh + ':' + mm)
-      }
+      }.bind(this),
+      fail: function() {
+        if (this.$valid) {
+          var now = new Date()
+          var hh = String(now.getHours()).padStart(2, '0')
+          var mm = String(now.getMinutes()).padStart(2, '0')
+          this.nowTime = this._fmtClock(hh + ':' + mm)
+        }
+      }.bind(this)
     })
   },
 
   onShow() {
     this.isNavigating = false
+    this.longPressTriggered = false
+    this.touchMoved = false
     this.loadData()
   },
 
@@ -138,11 +144,12 @@ export default {
     }
 
     // 文件夹模式
-    dataManager.getVisibleChildren(this.path).then((children) => {
-      if (!this.$valid) return
-      this.allItems = children || []
-      this.visibleItems = this.allItems
-    })
+    dataManager.getVisibleChildren(this.path).then(function(children) {
+      if (this.$valid) {
+        this.allItems = children || []
+        this.visibleItems = this.allItems
+      }
+    }.bind(this))
   },
 
   loadKnowledgePoints() {
@@ -235,9 +242,40 @@ export default {
     this._loadMoreChunk()
   },
 
+  // 触摸事件：滑动误触防护
+  onTouchStart(e) {
+    var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
+    if (t) {
+      this.touchStartX = t.clientX
+      this.touchStartY = t.clientY
+      this.touchMoved = false
+    }
+  },
+
+  onTouchMove(e) {
+    var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
+    if (t) {
+      var dx = Math.abs(t.clientX - this.touchStartX)
+      var dy = Math.abs(t.clientY - this.touchStartY)
+      if (dx > 10 || dy > 10) {
+        this.touchMoved = true
+      }
+    }
+  },
+
   // 点击列表项 → 进入内容
   onItemClick(item) {
     if (this.isNavigating) return
+    // 长按后阻止点击事件
+    if (this.longPressTriggered) {
+      this.longPressTriggered = false
+      return
+    }
+    // 滑动误触防护
+    if (this.touchMoved) {
+      this.touchMoved = false
+      return
+    }
     if (!item) return
     this.isNavigating = true
 
@@ -280,14 +318,16 @@ export default {
     }
   },
 
-  // 点击删除按钮 → 跳转删除确认页
-  onDeleteClick(item) {
+  // 长按列表项 → 跳转删除确认页
+  onLongPress(item) {
     if (this.isNavigating) return
     if (!item) return
-    this.isNavigating = true
 
-    // 知识点科目删除
+    // 知识点条目：仅导入科目可删除
     if (item.type === 'knowledge_point') {
+      if (!item.imported) return
+      this.longPressTriggered = true
+      this.isNavigating = true
       router.push({
         uri: '/pages/deleteConfirm',
         params: {
@@ -297,6 +337,12 @@ export default {
       })
       return
     }
+
+    // 内置示例不可删除
+    if (this.path === 'builtin') return
+
+    this.longPressTriggered = true
+    this.isNavigating = true
 
     // 蓝牙传输文件夹内容
     if (this.path && this.path.startsWith('bt_')) {
@@ -311,7 +357,6 @@ export default {
       return
     }
 
-    // 内置内容
     var index = this.allItems.indexOf(item)
     var childPath = this.path + ',' + index
     router.push({

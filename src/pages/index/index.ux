@@ -9,15 +9,12 @@
 
     <!-- 文件夹列表（完全参照考点阅读器结构） -->
     <list class="list" id="homeList" if="{{allItems.length > 0}}">
-      <list-item for="{{visibleItems}}" tid="id" class="item" type="folder" @click="onItemClick($item)">
+      <list-item for="{{visibleItems}}" tid="id" class="item" type="folder" @click="onItemClick($item)" @longpress="onLongPress($item)" @touchstart="onTouchStart" @touchmove="onTouchMove">
         <div class="item-content">
           <text class="itemtext">{{$item.name}}</text>
           <text class="itemtext2">{{$item.subtitle}}</text>
         </div>
-        <div class="item-right">
-          <img static src="/common/images/bin.png" class="item-delete-icon" @click="onDeleteClick($item)" />
-          <img static src="/common/images/enter.png" class="arrow" />
-        </div>
+        <img static src="/common/images/enter.png" class="arrow" />
       </list-item>
       <!-- 底部占位 -->
       <list-item type="footer" class="list-padding"></list-item>
@@ -55,6 +52,11 @@ export default {
     allItems: [],
     visibleItems: [],
     isNavigating: false,
+    longPressTriggered: false,
+    // 滑动误触防护：记录触摸起点和是否滑动
+    touchStartX: 0,
+    touchStartY: 0,
+    touchMoved: false,
     _unsubReceive: null
   },
 
@@ -113,6 +115,8 @@ export default {
 
   onShow() {
     this.isNavigating = false
+    this.longPressTriggered = false
+    this.touchMoved = false
     if (appState.needRefreshList) {
       appState.needRefreshList = false
     }
@@ -132,6 +136,7 @@ export default {
 
   loadData() {
     var items = []
+    var that = this
 
     try {
       var store = this.$app.$def && this.$app.$def.store
@@ -155,9 +160,9 @@ export default {
       console.log('load knowledge subjects error: ' + e)
     }
 
-    dataManager.getTopLevelFolders().then((folders) => {
+    dataManager.getTopLevelFolders().then(function(folders) {
       if (folders) {
-        folders.forEach((folder) => {
+        folders.forEach(function(folder) {
           var subtitle = folder.type === 'folder' ? '文件夹' : '考点'
           items.push({
             id: folder.id,
@@ -168,18 +173,51 @@ export default {
           })
         })
       }
-    }).catch((e) => {
+    }).catch(function(e) {
       console.log('load folders error: ' + e)
-    }).then(() => {
-      if (!this.$valid) return
-      this.allItems = items
-      this.visibleItems = items
+    }).then(function() {
+      if (that.$valid) {
+        that.allItems = items
+        that.visibleItems = items
+      }
     })
+  },
+
+  // 触摸事件：记录起点，用于滑动误触防护
+  onTouchStart(e) {
+    var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
+    if (t) {
+      this.touchStartX = t.clientX
+      this.touchStartY = t.clientY
+      this.touchMoved = false
+    }
+  },
+
+  // 触摸移动：手指移动超过 10px 判定为滑动，抑制后续 click
+  onTouchMove(e) {
+    var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
+    if (t) {
+      var dx = Math.abs(t.clientX - this.touchStartX)
+      var dy = Math.abs(t.clientY - this.touchStartY)
+      if (dx > 10 || dy > 10) {
+        this.touchMoved = true
+      }
+    }
   },
 
   // 点击列表项 → 进入文件夹/考点
   onItemClick(item) {
     if (this.isNavigating) return
+    // 长按后阻止点击事件
+    if (this.longPressTriggered) {
+      this.longPressTriggered = false
+      return
+    }
+    // 滑动误触防护：手指移动超过阈值则不触发点击
+    if (this.touchMoved) {
+      this.touchMoved = false
+      return
+    }
     if (!item) return
     this.isNavigating = true
 
@@ -201,10 +239,11 @@ export default {
     }
   },
 
-  // 点击删除按钮 → 跳转删除确认页
-  onDeleteClick(item) {
+  // 长按列表项 → 跳转删除确认页
+  onLongPress(item) {
     if (this.isNavigating) return
     if (!item) return
+    this.longPressTriggered = true
     this.isNavigating = true
 
     // 知识点科目删除

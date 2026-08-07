@@ -31,13 +31,6 @@
         </div>
         <text style="font-size: 28px; font-weight: bold; color: rgba(255,255,255,0.6);">{{timeFormat === '12h' ? '12小时' : '24小时'}}</text>
       </list-item>
-      <list-item class="item" @click="toggleReadingMode" type="item">
-        <div class="item-content">
-          <text class="itemtext" static>阅读模式</text>
-          <text class="itemtext2" static>分页/无缝衔接</text>
-        </div>
-        <text style="font-size: 28px; font-weight: bold; color: rgba(255,255,255,0.6);">{{readingMode === 'paginated' ? '分页' : '无缝'}}</text>
-      </list-item>
       <list-item class="item" @click="toggleKeyboardVibrate" type="item">
         <div class="item-content">
           <text class="itemtext" static>键盘震动</text>
@@ -62,7 +55,10 @@
           <text class="itemtext" static>考点总数</text>
           <text class="itemtext2" static>已存储考点数量</text>
         </div>
-        <text style="font-size: 28px; font-weight: bold; color: rgba(255,255,255,0.6);">{{contentCount}} 篇</text>
+        <div style="flex-direction: column; align-items: flex-end;">
+          <text style="font-size: 28px; font-weight: bold; color: rgba(255,255,255,0.6);">{{builtinCount}} 篇（不含导入）</text>
+          <text style="font-size: 28px; font-weight: bold; color: rgba(255,255,255,0.6);">{{totalCount}} 篇（含导入）</text>
+        </div>
       </list-item>
       <list-item class="item" @click="goDeleteAll" type="item">
         <div class="item-content">
@@ -115,14 +111,11 @@
       </list-item>
 
       <!-- 应用信息底栏 -->
-      <list-item style="width: 100%; height: 320px; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 24px;" type="footer">
+      <list-item style="width: 100%; height: 260px; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 24px;" type="footer">
         <img static src="/common/images/icon.png" style="width: 64px; height: 64px; border-radius: 14px;" />
         <text static style="font-size: 26px; font-weight: bold; color: white; text-align: center; margin-top: 10px;">{{appName}}</text>
         <text static style="font-size: 22px; font-weight: bold; color: rgba(255,255,255,0.4); text-align: center; margin-top: 6px;">版本 {{versionName}}</text>
         <text static style="font-size: 20px; font-weight: bold; color: rgba(255,255,255,0.3); text-align: center; margin-top: 8px;">开发：{{developer}}</text>
-        <text static style="font-size: 18px; font-weight: bold; color: rgba(255,255,255,0.3); text-align: center; margin-top: 6px;">{{thanks}}</text>
-        <text static style="font-size: 16px; font-weight: bold; color: rgba(255,255,255,0.25); text-align: center; margin-top: 6px; width: 300px;">部分资源来源：喵喵电子书vela端设计稿</text>
-        <text static style="font-size: 16px; font-weight: bold; color: rgba(255,255,255,0.2); text-align: center; margin-top: 8px; width: 300px; line-height: 24px;">提醒：请勿上传长度过长的文件，可能导致应用卡顿或崩溃</text>
       </list-item>
     </list>
 
@@ -143,34 +136,32 @@ import app from '@system.app'
 import prompt from '@system.prompt'
 import dataManager from '../../common/utils/dataManager.js'
 import appState from '../../common/utils/appState.js'
-import { getNowTime, getFormattedTime } from '../../common/utils/timeUtil.js'
+import { onTimeChange, offTimeChange } from '../../common/clock.js'
 
 export default {
   private: {
     nowTime: '00:00',
-    timer: null,
+    __unsubClock: null,
     fontSizeValue: 26,
     keepScreenOn: false,
     timeFormat: '24h',
-    readingMode: 'paginated',
     keyboardVibrateMode: '',
     availableStorage: '加载中...',
-    contentCount: '加载中...',
+    builtinCount: '加载中...',
+    totalCount: '加载中...',
     contentStorageSize: '加载中...',
     transferRecords: [],
     versionName: '1.0.1',
     appName: '闪念小抄',
-    developer: 'Vultra 和 文华逸洋',
-    thanks: '特别感谢 @无源流沙 和 @爅峫'
+    developer: 'Vultra 和 文华逸洋'
   },
 
   onInit() {
-    this.nowTime = getNowTime()
-    this.timer = setInterval(() => {
+    this.__unsubClock = onTimeChange((t) => {
       if (this.$valid) {
-        this.nowTime = getNowTime()
+        this.nowTime = this._fmtClock(t)
       }
-    }, 60000)
+    })
     this.loadVersion()
     this.loadAllSettings()
     this.loadStorageInfo()
@@ -183,10 +174,22 @@ export default {
   },
 
   onDestroy() {
-    if (this.timer) {
-      clearInterval(this.timer)
-      this.timer = null
+    if (this.__unsubClock) {
+      offTimeChange(this.__unsubClock)
+      this.__unsubClock = null
     }
+  },
+
+  _fmtClock(t) {
+    if (this.timeFormat === '12h') {
+      const parts = t.split(':')
+      let h = parseInt(parts[0], 10) || 0
+      const m = parts[1] || '00'
+      const ampm = h >= 12 ? '下午' : '上午'
+      h = h % 12 || 12
+      return ampm + ' ' + h + ':' + m
+    }
+    return t
   },
 
   loadVersion() {
@@ -236,25 +239,15 @@ export default {
         if (!this.$valid) return
         if (data) {
           this.timeFormat = data
-          this.nowTime = getFormattedTime(this.timeFormat)
+          const now = new Date()
+          const hh = String(now.getHours()).padStart(2, '0')
+          const mm = String(now.getMinutes()).padStart(2, '0')
+          this.nowTime = this._fmtClock(hh + ':' + mm)
         }
       },
       fail: () => {
         if (!this.$valid) return
         this.timeFormat = '24h'
-      }
-    })
-    storage.get({
-      key: 'KD_READING_MODE',
-      success: (data) => {
-        if (!this.$valid) return
-        this.readingMode = data === 'seamless' ? 'seamless' : 'paginated'
-        appState.readingMode = this.readingMode
-      },
-      fail: () => {
-        if (!this.$valid) return
-        this.readingMode = 'paginated'
-        appState.readingMode = 'paginated'
       }
     })
     // 键盘震动模式：从 app 全局缓存读取(app onCreate 已从 storage 读回并缓存)
@@ -278,17 +271,11 @@ export default {
   toggleTimeFormat() {
     this.timeFormat = this.timeFormat === '24h' ? '12h' : '24h'
     storage.set({ key: 'KD_TIME_FORMAT', value: this.timeFormat })
-    this.nowTime = getFormattedTime(this.timeFormat)
-  },
-
-  toggleReadingMode() {
-    this.readingMode = this.readingMode === 'paginated' ? 'seamless' : 'paginated'
-    storage.set({ key: 'KD_READING_MODE', value: this.readingMode })
-    appState.readingMode = this.readingMode
-    prompt.showToast({
-      message: this.readingMode === 'paginated' ? '已切换为分页模式' : '已切换为无缝模式',
-      duration: 1500
-    })
+    // 立即刷新时间显示
+    const now = new Date()
+    const hh = String(now.getHours()).padStart(2, '0')
+    const mm = String(now.getMinutes()).padStart(2, '0')
+    this.nowTime = this._fmtClock(hh + ':' + mm)
   },
 
   toggleKeyboardVibrate() {
@@ -316,33 +303,70 @@ export default {
       }
     })
 
-    dataManager.getTotalContentCount().then((count) => {
+    this.loadContentCount()
+
+    dataManager.getContentStorageSize().then((size) => {
       if (!this.$valid) return
-      this.contentCount = count.toString()
-
-      // 占用存储大小
-      dataManager.getContentStorageSize().then((size) => {
-        if (!this.$valid) return
-        this.contentStorageSize = dataManager.formatFileSize(size || 0)
-
-        // 传输记录（从蓝牙内容 meta 读取，按时间倒序）
-        this.loadTransferRecords()
-      })
+      this.contentStorageSize = dataManager.formatFileSize(size || 0)
     })
+
+    this.loadTransferRecords()
+  },
+
+  loadContentCount() {
+    try {
+      const store = this.$app.$def && this.$app.$def.store
+      if (store && store.getSubjects) {
+        const subjects = store.getSubjects()
+        let builtin = 0
+        let total = 0
+        for (let i = 0; i < subjects.length; i++) {
+          const s = subjects[i]
+          total += s.count
+          if (!s.imported) {
+            builtin += s.count
+          }
+        }
+        this.builtinCount = builtin.toString()
+        this.totalCount = total.toString()
+      } else {
+        this.builtinCount = '0'
+        this.totalCount = '0'
+      }
+    } catch (e) {
+      this.builtinCount = '0'
+      this.totalCount = '0'
+    }
   },
 
   loadTransferRecords() {
-    return dataManager.getBluetoothContentList().then((list) => {
-      if (!this.$valid) return
-      const files = (list || []).filter(item => item.type === 'content')
-      files.sort((a, b) => (b.created || 0) - (a.created || 0))
-      this.transferRecords = files.slice(0, 5).map(item => ({
-        id: item.id,
-        name: item.name,
-        time: this.formatTimestamp(item.created)
-      }))
-    }, (e) => {
-      if (this.$valid) this.transferRecords = []
+    storage.get({
+      key: 'KD_TRANSFER_RECORDS',
+      success: (data) => {
+        if (!this.$valid) return
+        if (data) {
+          try {
+            const list = JSON.parse(data)
+            if (Array.isArray(list)) {
+              // 按时间倒序排列，取前5条
+              list.sort((a, b) => (b.time || 0) - (a.time || 0))
+              this.transferRecords = list.slice(0, 5).map(item => ({
+                id: item.id,
+                name: item.name,
+                time: this.formatTimestamp(item.time)
+              }))
+              return
+            }
+          } catch (e) {
+            // 解析失败，忽略
+          }
+        }
+        this.transferRecords = []
+      },
+      fail: () => {
+        if (!this.$valid) return
+        this.transferRecords = []
+      }
     })
   },
 

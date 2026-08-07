@@ -22,6 +22,8 @@
 
     <!-- 顶部栏 -->
     <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
+    <!-- 顶部渐变遮罩（始终显示） -->
+    <img static src="/common/images/top_mask.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
     <img static src="/common/images/back.png" @click="exitApp" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
     <img static src="/common/images/more.png" @click="goSettings" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />
     <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>
@@ -41,13 +43,13 @@ import router from '@system.router'
 import app from '@system.app'
 import storage from '@system.storage'
 import dataManager from '../../common/utils/dataManager.js'
-import { getFormattedTimeNow } from '../../common/utils/timeUtil.js'
+import { onTimeChange, offTimeChange } from '../../common/clock.js'
 import appState from '../../common/utils/appState.js'
 
 export default {
   private: {
     nowTime: '00:00',
-    timer: null,
+    __unsubClock: null,
     timeFormat: '24h',
     allItems: [],
     visibleItems: [],
@@ -62,11 +64,11 @@ export default {
 
   onInit() {
     this.loadTimeFormat()
-    this.timer = setInterval(() => {
+    this.__unsubClock = onTimeChange((t) => {
       if (this.$valid) {
-        this.nowTime = getFormattedTimeNow(this.timeFormat)
+        this.nowTime = this._fmtClock(t)
       }
-    }, 60000)
+    })
 
     // 订阅接收事件：用户数据加载/导入/删除后刷新列表
     if (this.$app.$def && this.$app.$def.onReceive) {
@@ -79,6 +81,18 @@ export default {
     }
   },
 
+  _fmtClock(t) {
+    if (this.timeFormat === '12h') {
+      const parts = t.split(':')
+      let h = parseInt(parts[0], 10) || 0
+      const m = parts[1] || '00'
+      const ampm = h >= 12 ? '下午' : '上午'
+      h = h % 12 || 12
+      return ampm + ' ' + h + ':' + m
+    }
+    return t
+  },
+
   loadTimeFormat() {
     storage.get({
       key: 'KD_TIME_FORMAT',
@@ -87,11 +101,18 @@ export default {
         if (data) {
           this.timeFormat = data
         }
-        this.nowTime = getFormattedTimeNow(this.timeFormat)
+        // 重新格式化当前时间
+        const now = new Date()
+        const hh = String(now.getHours()).padStart(2, '0')
+        const mm = String(now.getMinutes()).padStart(2, '0')
+        this.nowTime = this._fmtClock(hh + ':' + mm)
       },
       fail: () => {
         if (!this.$valid) return
-        this.nowTime = getFormattedTimeNow(this.timeFormat)
+        const now = new Date()
+        const hh = String(now.getHours()).padStart(2, '0')
+        const mm = String(now.getMinutes()).padStart(2, '0')
+        this.nowTime = this._fmtClock(hh + ':' + mm)
       }
     })
   },
@@ -106,9 +127,9 @@ export default {
   },
 
   onDestroy() {
-    if (this.timer) {
-      clearInterval(this.timer)
-      this.timer = null
+    if (this.__unsubClock) {
+      offTimeChange(this.__unsubClock)
+      this.__unsubClock = null
     }
     if (this._unsubReceive) {
       this._unsubReceive()

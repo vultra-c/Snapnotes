@@ -3,7 +3,7 @@
  * initDict 直接赋值 initialsIndex，避免 init 时对 3000+ 词逐一 segmentPinyin（慢速手环引擎卡顿主因）。
  * 由与 dicUtil.segmentPinyin 一致的贪心切分生成，仅含多音节词。
  */
-var _initialsIndex = null;
+let _initialsIndex = null;
 function getInitialsIndex() {
   if (_initialsIndex) return _initialsIndex;
   _initialsIndex = {
@@ -807,7 +807,7 @@ function getInitialsIndex() {
   "gjl": ["guanjile"],
   "mdl": ["meidianle"],
   "wyd": ["wanyidian"],
-  "xxn": ["xiexieni"]
+  "xxn": ["xiexieni"],
 };
   return _initialsIndex;
 }

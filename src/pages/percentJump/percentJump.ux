@@ -42,13 +42,13 @@
 <script>
 import router from '@system.router'
 import prompt from '@system.prompt'
-import { getNowTime } from '../../common/utils/timeUtil.js'
+import { onTimeChange, offTimeChange } from '../../common/clock.js'
 import appState from '../../common/utils/appState.js'
 
 export default {
   private: {
     nowTime: '00:00',
-    timer: null,
+    __unsubClock: null,
     inputPercent: '0',
     totalPages: 1,
     contentPath: ''
@@ -58,12 +58,11 @@ export default {
   },
 
   onInit() {
-    this.nowTime = getNowTime()
-    this.timer = setInterval(() => {
+    this.__unsubClock = onTimeChange((t) => {
       if (this.$valid) {
-        this.nowTime = getNowTime()
+        this.nowTime = t
       }
-    }, 60000)
+    })
     this.contentPath = this.path
     // 无缝模式：默认 0%
     if (appState.readingMode === 'seamless') {
@@ -79,9 +78,9 @@ export default {
   },
 
   onDestroy() {
-    if (this.timer) {
-      clearInterval(this.timer)
-      this.timer = null
+    if (this.__unsubClock) {
+      offTimeChange(this.__unsubClock)
+      this.__unsubClock = null
     }
   },
 

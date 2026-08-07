@@ -32,13 +32,13 @@ import router from '@system.router'
 import prompt from '@system.prompt'
 import app from '@system.app'
 import dataManager from '../../common/utils/dataManager.js'
-import { getNowTime } from '../../common/utils/timeUtil.js'
+import { onTimeChange, offTimeChange } from '../../common/clock.js'
 import appState from '../../common/utils/appState.js'
 
 export default {
   private: {
     nowTime: '00:00',
-    timer: null
+    __unsubClock: null
   },
   protected: {
     action: '',
@@ -50,12 +50,11 @@ export default {
   },
 
   onInit() {
-    this.nowTime = getNowTime()
-    this.timer = setInterval(() => {
+    this.__unsubClock = onTimeChange((t) => {
       if (this.$valid) {
-        this.nowTime = getNowTime()
+        this.nowTime = t
       }
-    }, 60000)
+    })
 
     // 根据 action 设置显示内容
     // confirmText 保持简短（一行），避免与 subText 重叠
@@ -84,9 +83,9 @@ export default {
   },
 
   onDestroy() {
-    if (this.timer) {
-      clearInterval(this.timer)
-      this.timer = null
+    if (this.__unsubClock) {
+      offTimeChange(this.__unsubClock)
+      this.__unsubClock = null
     }
   },
 

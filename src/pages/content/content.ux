@@ -107,13 +107,14 @@ import router from '@system.router'
 import prompt from '@system.prompt'
 import storage from '@system.storage'
 import dataManager from '../../common/utils/dataManager.js'
-import { getFormattedTimeNow } from '../../common/utils/timeUtil.js'
+import { onTimeChange, offTimeChange } from '../../common/clock.js'
 import appState from '../../common/utils/appState.js'
 
 export default {
   private: {
     nowTime: '00:00',
-    timer: null,
+    __unsubClock: null,
+    _saveTimer: null,
     timeFormat: '24h',
     pageName: '全文',
     showSetting: true,
@@ -164,9 +165,14 @@ export default {
   },
 
   onInit() {
-    this.timer = setInterval(() => {
+    this.__unsubClock = onTimeChange((t) => {
       if (this.$valid) {
-        this.nowTime = getFormattedTimeNow(this.timeFormat)
+        this.nowTime = this._fmtClock(t)
+      }
+    })
+    // 保留自动保存进度的定时器
+    this._saveTimer = setInterval(() => {
+      if (this.$valid) {
         this.saveProgress()
       }
     }, 60000)
@@ -382,9 +388,13 @@ export default {
   },
 
   onDestroy() {
-    if (this.timer) {
-      clearInterval(this.timer)
-      this.timer = null
+    if (this.__unsubClock) {
+      offTimeChange(this.__unsubClock)
+      this.__unsubClock = null
+    }
+    if (this._saveTimer) {
+      clearInterval(this._saveTimer)
+      this._saveTimer = null
     }
     if (!this.redirecting) {
       this.saveProgress()
@@ -392,7 +402,19 @@ export default {
     appState.isStructured = false
   },
 
-  // 为每个 block 添加唯一 key（用于 for 指令的 tid）
+  _fmtClock(t) {
+    if (this.timeFormat === '12h') {
+      const parts = t.split(':')
+      let h = parseInt(parts[0], 10) || 0
+      const m = parts[1] || '00'
+      const ampm = h >= 12 ? '下午' : '上午'
+      h = h % 12 || 12
+      return ampm + ' ' + h + ':' + m
+    }
+    return t
+  },
+
+  // 在每个 block 添加唯一 key（用于 for 指令的 tid）
   addKeys(blocks) {
     var result = []
     for (var i = 0; i < blocks.length; i++) {
@@ -507,7 +529,10 @@ export default {
             // brightness 暂不可用
 
             this.timeFormat = timeFormatStr || '24h'
-            this.nowTime = getFormattedTimeNow(this.timeFormat)
+            const now = new Date()
+            const hh = String(now.getHours()).padStart(2, '0')
+            const mm = String(now.getMinutes()).padStart(2, '0')
+            this.nowTime = this._fmtClock(hh + ':' + mm)
             return fontChanged
           })
         })

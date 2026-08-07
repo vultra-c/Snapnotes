@@ -6,7 +6,7 @@
     <!-- 顶部栏：沿用主页风格（hd.png + 返回 + 时间 + 标题），全部绝对定位 -->
     <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
     <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
-    <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>
+    <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{currentTime}}</text>
     <text static style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center;">搜索</text>
 
     <!-- 搜索框（胶囊形，仿 Snapnotes .search-bar__inner），位于顶部栏下方 -->
@@ -56,12 +56,12 @@
 <script>
 import router from '@system.router'
 import dataManager from '../../common/utils/dataManager.js'
-import { getNowTime } from '../../common/utils/timeUtil.js'
+import { onTimeChange, offTimeChange } from '../../common/clock'
 
 export default {
   private: {
-    nowTime: '00:00',
-    timer: null,
+    currentTime: '00:00',
+    __unsubClock: null,
     textValue: '',
     hideKeyboard: true,          // true=键盘隐藏（与 InputMethod.hide 同向）
     searchResults: [],           // 全量命中结果
@@ -84,12 +84,7 @@ export default {
   },
 
   onInit() {
-    this.nowTime = getNowTime()
-    this.timer = setInterval(() => {
-      if (this.$valid) {
-        this.nowTime = getNowTime()
-      }
-    }, 60000)
+    this.__unsubClock = onTimeChange((t) => { this.currentTime = t })
     // 震动模式：读 $def 缓存，同步给 InputMethod
     this.vibrateMode = this.$app.$def.getKeyboardVibrateMode()
     // 进页即构建知识点 haystack（含预算缓存），但不渲染结果，首屏只画占位
@@ -97,9 +92,9 @@ export default {
   },
 
   onDestroy() {
-    if (this.timer) {
-      clearInterval(this.timer)
-      this.timer = null
+    if (this.__unsubClock) {
+      offTimeChange(this.__unsubClock)
+      this.__unsubClock = null
     }
     if (this.__hayTimer) {
       clearTimeout(this.__hayTimer)
@@ -244,6 +239,7 @@ export default {
 
   // 执行搜索：知识点 haystack（同步） + 文件正文（异步 dataManager）。
   // 进入即取消任何挂起的防抖定时器（空格触发即时搜索时，避免后续防抖再覆盖一次）。
+  // 先同步展示知识点搜索结果，再异步补充文件搜索结果，不阻塞首屏渲染。
   doSearch() {
     if (this.__searchTimer) {
       clearTimeout(this.__searchTimer)
@@ -272,41 +268,7 @@ export default {
       }
     }
 
-    // 2) 文件正文搜索（dataManager）
-    let fileSearchPromise
-    if (this.scope === 'single' && this.searchPath) {
-      // 单文件范围：在指定文件内搜全部匹配位置
-      fileSearchPromise = dataManager.searchContentInFile(this.searchPath, keyword).then((matches) => {
-        const name = dataManager.getUnifiedNodeName(this.searchPath)
-        ;(matches || []).forEach((m, idx) => {
-          list.push({
-            id: 'file_' + idx + '_' + m.matchStart,
-            type: 'file',
-            subjectLabel: '文件',
-            title: name,
-            desc: m.snippet || '',
-            path: this.searchPath,
-            matchStart: m.matchStart
-          })
-        })
-      })
-    } else {
-      // 全局：搜全部考点文件正文
-      fileSearchPromise = dataManager.searchContent(keyword).then((fileResults) => {
-        ;(fileResults || []).forEach((item, idx) => {
-          list.push({
-            id: 'file_' + idx + '_' + item.path + ':' + item.matchStart,
-            type: 'file',
-            subjectLabel: '文件',
-            title: item.name,
-            desc: item.snippet || '',
-            path: item.path,
-            matchStart: item.matchStart
-          })
-        })
-      })
-    }
-
+    // finishSearch 闭包：捕获 token 和 list 引用，用于两次调用（同步后立即 + 文件搜索完成后）
     const finishSearch = () => {
       if (!this.$valid) return
       // 过期守卫：期间用户又输入了新关键词，丢弃本次（已被更新的 token 取代）
@@ -319,7 +281,39 @@ export default {
       this._applyRenderedResults()
     }
 
-    fileSearchPromise.then(() => {
+    // 立即展示知识点搜索结果（不等待文件异步搜索）
+    finishSearch()
+
+    // 2) 文件正文搜索（dataManager），异步补充结果
+    ;(this.scope === 'single' && this.searchPath
+      ? dataManager.searchContentInFile(this.searchPath, keyword).then((matches) => {
+          const name = dataManager.getUnifiedNodeName(this.searchPath)
+          ;(matches || []).forEach((m, idx) => {
+            list.push({
+              id: 'file_' + idx + '_' + m.matchStart,
+              type: 'file',
+              subjectLabel: '文件',
+              title: name,
+              desc: m.snippet || '',
+              path: this.searchPath,
+              matchStart: m.matchStart
+            })
+          })
+        })
+      : dataManager.searchContent(keyword).then((fileResults) => {
+          ;(fileResults || []).forEach((item, idx) => {
+            list.push({
+              id: 'file_' + idx + '_' + item.path + ':' + item.matchStart,
+              type: 'file',
+              subjectLabel: '文件',
+              title: item.name,
+              desc: item.snippet || '',
+              path: item.path,
+              matchStart: item.matchStart
+            })
+          })
+        })
+    ).then(() => {
       finishSearch()
     }, (e) => {
       console.log('search content error: ' + e)
@@ -408,13 +402,14 @@ export default {
     border-radius: 28px;
     flex-direction: row;
     align-items: center;
-    padding-left: 18px;
+    padding-left: 14px;
     padding-right: 56px;        /* 右侧留出清空按钮空间，避免文字被遮 */
   }
   .search-bar__icon {
     width: 28px;
     height: 28px;
-    margin-right: 12px;
+    margin-right: 8px;
+    flex-shrink: 0;
   }
   .search-bar__textwrap {
     flex: 1;

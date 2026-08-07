@@ -81,7 +81,7 @@
 <script>
 import router from '@system.router'
 import vibrator from '@system.vibrator'
-import { getNowTime } from '../../common/utils/timeUtil.js'
+import { onTimeChange, offTimeChange } from '../../common/clock.js'
 
 export default {
   private: {
@@ -91,7 +91,7 @@ export default {
     errorMsg: '',
     savedFolder: '主页',
     nowTime: '00:00',
-    timer: null,
+    __unsubClock: null,
     autoReturnTimer: null,
     transferRate: '',
     lastProgress: 0,
@@ -101,11 +101,10 @@ export default {
   },
 
   onInit() {
-    this.nowTime = getNowTime()
-    this.timer = setInterval(() => {
+    this.__unsubClock = onTimeChange((t) => {
       if (!this.$valid) return
-      this.nowTime = getNowTime()
-    }, 60000)
+      this.nowTime = t
+    })
 
     // 通过 $app.$def 安全访问通信对象（替代 globalThis，兼容小米手环10 Pro）
     const connfile = this.$app.$def.getConnfile ? this.$app.$def.getConnfile() : null
@@ -247,9 +246,9 @@ export default {
   },
 
   onDestroy() {
-    if (this.timer) {
-      clearInterval(this.timer)
-      this.timer = null
+    if (this.__unsubClock) {
+      offTimeChange(this.__unsubClock)
+      this.__unsubClock = null
     }
     if (this.autoReturnTimer) {
       clearTimeout(this.autoReturnTimer)

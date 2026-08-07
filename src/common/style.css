@@ -57,7 +57,8 @@
 
 /* 副标题文本 */
 .itemtext2 {
-  font-size: 28px;
+  font-size: 24px;
+  width: 100%;
   font-weight: bold;
   color: rgba(255, 255, 255, 0.6);
   text-overflow: ellipsis;

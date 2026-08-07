@@ -14,21 +14,25 @@
 
     <!-- 列表 -->
     <list class="list" if="{{visibleItems.length > 0}}" id="subList" @scrollbottom="loadMore">
-      <list-item for="{{visibleItems}}" tid="id" class="item" type="item" @click="onItemClick($item)" @touchstart="onTouchStart($item)" @touchmove="onTouchMove" @touchend="onTouchEnd">
-        <div class="item-content">
-          <text class="itemtext">{{$item.name}}</text>
-          <text class="itemtext2">{{$item.subtitle}}</text>
-        </div>
-        <img static src="/common/images/enter.png" class="arrow" />
-      </list-item>
+      <list-item for="{{visibleItems}}" tid="id" class="item" type="item">
+          <div style="width:100%;flex-direction:row;justify-content:space-between;align-items:center;"
+            @touchstart="onTouchStart($item, $event)" @touchend="onTouchEnd" @touchcancel="onTouchEnd">
+            <div class="item-content">
+              <text class="itemtext">{{$item.name}}</text>
+              <text class="itemtext2">{{$item.subtitle}}</text>
+            </div>
+            <img static src="/common/images/enter.png" class="arrow" />
+          </div>
+        </list-item>
       <!-- 触底加载指示：知识点模式且还有更多未加载 -->
       <list-item type="loading-more" class="loading-more" if="{{knowledgeSubject && visibleItems.length < totalCount}}">
         <text class="loading-more__text" static>正在加载...</text>
       </list-item>
     </list>
 
-    <!-- 顶部栏（hd.png 自带渐变遮罩效果，同考点阅读页） -->
+    <!-- 顶部栏（hd.png 背景 + mask_up.png 渐变遮罩，参考喵喵电子书样式） -->
     <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
+    <img static src="/common/images/mask_up.png" style="position: absolute; top: 0px; left: 0px; width: 336px; height: 160px;" />
     <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
     <img static src="/common/images/more.png" @click="goSettings" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />
     <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>
@@ -57,9 +61,9 @@ export default {
     touchStartX: 0,
     touchStartY: 0,
     touchMoved: false,
-    // 长按检测（非绑定字段，仅用于计时器引用）
-    __longPressTimer: null,
+    // 长按检测
     __longPressItem: null,
+    __longPressTimer: null
     // 知识点分片加载：ready 为首屏分片是否完成；totalCount 为全量条目数
     ready: true,
     totalCount: 0
@@ -246,17 +250,44 @@ export default {
     this._loadMoreChunk()
   },
 
-  onItemClick(item) {
+  // 触摸开始：记录触摸位置，启动长按定时器
+  onTouchStart(item, evt) {
     if (this.isNavigating) return
+    this.touchMoved = false
+    this.touchStartX = evt.touches ? evt.touches[0].globalX || evt.touches[0].x : 0
+    this.touchStartY = evt.touches ? evt.touches[0].globalY || evt.touches[0].y : 0
+    this.__longPressItem = item
+    // 600ms 后触发长按
+    this.__longPressTimer = setTimeout(() => {
+      if (!this.$valid) return
+      this.__longPressTimer = null
+      this._doLongPress(this.__longPressItem)
+      this.__longPressItem = null
+    }, 600)
+  },
+
+  // 触摸结束：清除长按定时器，判断是点击还是滑动
+  onTouchEnd(evt) {
+    if (this.__longPressTimer) {
+      clearTimeout(this.__longPressTimer)
+      this.__longPressTimer = null
+    }
+    // 如果长按已触发，不再响应点击
     if (this.longPressTriggered) {
       this.longPressTriggered = false
+      this.__longPressItem = null
       return
     }
     // 滑动误触防护：手指移动超过阈值则不触发点击
     if (this.touchMoved) {
       this.touchMoved = false
+      this.__longPressItem = null
       return
     }
+    // 正常点击
+    var item = this.__longPressItem
+    this.__longPressItem = null
+    if (!item || this.isNavigating) return
     this.isNavigating = true
 
     // 知识点条目：导航到内容页
@@ -298,11 +329,7 @@ export default {
     }
   },
 
-  goSettings() {
-    router.push({ uri: '/pages/globalSettings' })
-  },
-
-  onLongPress(item) {
+  _doLongPress(item) {
     if (this.isNavigating) return
 
     // 知识点条目：若所属科目为导入科目(imported=true)，长按可删除整科
@@ -349,43 +376,8 @@ export default {
     })
   },
 
-  // 滑动误触防护 + 长按检测：记录触摸起点，启动长按计时器
-  onTouchStart(item) {
-    this.touchStartX = 0
-    this.touchStartY = 0
-    this.touchMoved = false
-    // 存储当前触摸项，启动长按计时器
-    this.__longPressItem = item
-    if (this.__longPressTimer) {
-      clearTimeout(this.__longPressTimer)
-    }
-    this.__longPressTimer = setTimeout(() => {
-      this.__longPressTimer = null
-      if (this.__longPressItem && !this.touchMoved && !this.isNavigating) {
-        this.onLongPress(this.__longPressItem)
-      }
-      this.__longPressItem = null
-    }, 500)
-  },
-
-  // 滑动误触防护 + 长按取消：手指移动判定为滑动，取消长按
-  onTouchMove() {
-    this.touchMoved = true
-    // 手指移动时取消长按
-    if (this.__longPressTimer) {
-      clearTimeout(this.__longPressTimer)
-      this.__longPressTimer = null
-      this.__longPressItem = null
-    }
-  },
-
-  // 手指抬起：取消长按计时器（未到 500ms 即抬起不算长按）
-  onTouchEnd() {
-    if (this.__longPressTimer) {
-      clearTimeout(this.__longPressTimer)
-      this.__longPressTimer = null
-      this.__longPressItem = null
-    }
+  goSettings() {
+    router.push({ uri: '/pages/globalSettings' })
   },
 
   goBack() {

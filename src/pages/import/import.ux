@@ -95,14 +95,11 @@ export default {
     // 已导入(外部)科目列表:每项 {name, count, confirming}。confirming 为 true 时该行处于"点确认才删"态。
     importedSubjects: [],
     // 导入科目标签:清除上一轮确认态倒计时的 timer id,每次确认态刷新时 clearTimeout 防串行。
-    __confirmTimer: null,
-    // 时钟回调引用(用于 onDestroy 正确解订)
-    __clockFn: null
+    __confirmTimer: null
   },
 
   onInit() {
-    this.__clockFn = (t) => { this.currentTime = t }
-    onTimeChange(this.__clockFn)
+    this.__unsubClock = onTimeChange((t) => { this.currentTime = t })
     this._probeFeature()
     this._attachReceiveLog()
     // 首次渲染已导入科目列表(若刚启动读完持久化数据,已能在这里看到;异步读回尚未完成时为空,
@@ -111,17 +108,12 @@ export default {
   },
 
   onDestroy() {
-    if (this.__clockFn) {
-      offTimeChange(this.__clockFn)
-      this.__clockFn = null
+    if (this.__unsubClock) {
+      offTimeChange(this.__unsubClock)
     }
     // 解订接收事件回调,避免页面销毁后 app.ux 仍持有它的引用
     if (this.__unsubReceive) {
       this.__unsubReceive()
-    }
-    if (this.__confirmTimer) {
-      clearTimeout(this.__confirmTimer)
-      this.__confirmTimer = null
     }
   },
 
@@ -167,9 +159,6 @@ export default {
       } else if (evt.kind === 'userdata-changed') {
         // 用户数据变更(删除/外部变更):刷新已导入科目列表。
         this._refreshImported()
-      } else if (evt.kind === 'userdata-loaded') {
-        // 持久化数据异步读回完成:补齐首次渲染可能为空的已导入科目列表。
-        this._refreshImported()
       }
     })
     if (this.$app.$def.interconnect) {
@@ -186,9 +175,7 @@ export default {
       const r = this.$app.$def.receiveImportedJSON(jsonStr)
       if (r.ok) {
         this.log('自验导入成功 len=' + r.len + (r.persisted ? ' 已落盘' : ' 未落盘'))
-        prompt.showToast({ message: '已导入示例知识点', duration: 1500 })
-        // 自验并入后刷新已导入科目列表
-        this._refreshImported()
+        prompt.showToast({ message: '已导入「拓展物理」', duration: 1500 })
       } else {
         this.log('自验导入失败 reason=' + r.reason)
         prompt.showToast({ message: '导入失败:' + r.reason, duration: 1500 })
@@ -377,7 +364,7 @@ export default {
 }
 
 .imp-status-hint {
-  color: rgba(255,255,255,0.6);
+  color: #98989E;
   font-size: 20px;
   line-height: 28px;
   margin-top: 8px;
@@ -396,7 +383,7 @@ export default {
 }
 
 .imp-action-hint {
-  color: rgba(255,255,255,0.6);
+  color: #98989E;
   font-size: 20px;
   margin-top: 6px;
   line-height: 28px;
@@ -488,7 +475,7 @@ export default {
 }
 
 .imp-log-title {
-  color: rgba(255,255,255,0.6);
+  color: #98989E;
   font-size: 22px;
   font-weight: bold;
   margin-bottom: 8px;
@@ -501,13 +488,13 @@ export default {
 }
 
 .imp-log-text {
-  color: rgba(255,255,255,0.6);
+  color: #98989E;
   font-size: 20px;
   line-height: 28px;
 }
 
 .imp-log-empty {
-  color: rgba(255,255,255,0.6);
+  color: #98989E;
   font-size: 20px;
   line-height: 28px;
 }

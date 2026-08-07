@@ -15,8 +15,9 @@
     <!-- 文件夹/考点列表 -->
     <list class="list" if="{{visibleItems.length > 0}}" id="subList" @scrollbottom="loadMore">
       <list-item for="{{visibleItems}}" tid="id" class="item" type="item"
-        @click="onItemClick($item)"
-        @longpress="onLongPress($item)">
+        @touchstart="onItemTouchStart($item)"
+        @touchend="onItemTouchEnd"
+        @touchmove="onItemTouchMove">
         <div class="item-content">
           <text class="itemtext">{{$item.name}}</text>
           <text class="itemtext2">{{$item.subtitle}}</text>
@@ -55,7 +56,6 @@ export default {
     allItems: [],
     visibleItems: [],
     isNavigating: false,
-    longPressTriggered: false,
     // 知识点分片加载
     ready: true,
     totalCount: 0
@@ -117,11 +117,21 @@ export default {
 
   onShow() {
     this.isNavigating = false
-    this.longPressTriggered = false
+    this._isLongPress = false
+    this._touchMoved = false
+    this._touchItem = null
+    if (this._longPressTimer) {
+      clearTimeout(this._longPressTimer)
+      this._longPressTimer = null
+    }
     this.loadData()
   },
 
   onDestroy() {
+    if (this._longPressTimer) {
+      clearTimeout(this._longPressTimer)
+      this._longPressTimer = null
+    }
     if (this.__unsubClock) {
       offTimeChange(this.__unsubClock)
       this.__unsubClock = null
@@ -236,16 +246,49 @@ export default {
     this._loadMoreChunk()
   },
 
-  onItemClick(item) {
-    if (this.isNavigating) return
-    // 如果长按刚刚触发，阻止click事件
-    if (this.longPressTriggered) {
-      this.longPressTriggered = false
-      return
+  // === 纯touch事件实现点击/长按区分 ===
+  onItemTouchStart(item) {
+    if (!item) return
+    this._touchItem = item
+    this._touchMoved = false
+    this._isLongPress = false
+    var that = this
+    this._longPressTimer = setTimeout(function() {
+      if (that.$valid && !that._touchMoved) {
+        that._isLongPress = true
+        that._doLongPress(item)
+      }
+    }, 600)
+  },
+
+  onItemTouchMove() {
+    this._touchMoved = true
+    if (this._longPressTimer) {
+      clearTimeout(this._longPressTimer)
+      this._longPressTimer = null
     }
+  },
+
+  onItemTouchEnd() {
+    if (this._longPressTimer) {
+      clearTimeout(this._longPressTimer)
+      this._longPressTimer = null
+    }
+    if (!this._isLongPress && !this._touchMoved && this._touchItem) {
+      this._doClick(this._touchItem)
+    }
+    this._isLongPress = false
+    this._touchMoved = false
+    this._touchItem = null
+  },
+
+  // 点击逻辑
+  _doClick(item) {
+    if (this.isNavigating) return
     if (!item) return
     this.isNavigating = true
 
+    // 知识点条目：导航到内容页
     if (item.type === 'knowledge_point') {
       router.push({
         uri: '/pages/content',
@@ -257,6 +300,7 @@ export default {
       return
     }
 
+    // 蓝牙传输文件夹内容
     if (this.path && this.path.startsWith('bt_')) {
       if (item.type === 'folder') {
         router.push({ uri: '/pages/subfolder', params: { path: item.id } })
@@ -266,11 +310,13 @@ export default {
       return
     }
 
+    // 内置示例
     if (this.path === 'builtin') {
       router.push({ uri: '/pages/reader', params: { path: item.id } })
       return
     }
 
+    // 内置内容：用 path + index
     var index = this.allItems.indexOf(item)
     var childPath = this.path + ',' + index
 
@@ -281,14 +327,14 @@ export default {
     }
   },
 
-  onLongPress(item) {
+  // 长按逻辑：跳转删除确认页
+  _doLongPress(item) {
     if (this.isNavigating) return
     if (!item) return
 
     // 知识点条目：若所属科目为导入科目，长按可删除整科
     if (item.type === 'knowledge_point') {
       if (!item.imported) return
-      this.longPressTriggered = true
       this.isNavigating = true
       router.push({
         uri: '/pages/deleteConfirm',
@@ -302,8 +348,6 @@ export default {
 
     if (this.path === 'builtin') return
 
-    // 标记长按已触发，阻止后续click事件
-    this.longPressTriggered = true
     this.isNavigating = true
 
     if (this.path && this.path.startsWith('bt_')) {

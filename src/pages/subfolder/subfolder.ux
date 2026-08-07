@@ -15,7 +15,11 @@
     <!-- 列表 -->
     <list class="list" if="{{visibleItems.length > 0}}" id="subList" @scrollbottom="loadMore">
       <list-item for="{{visibleItems}}" tid="id" class="item" type="item"
-        @click="onItemClick($item)" @longpress="onItemLongPress($item)">
+        @click="onItemClick($item)"
+        @touchstart="onItemTouchStart($item)"
+        @touchmove="onItemTouchMove"
+        @touchend="onItemTouchEnd"
+        @touchcancel="onItemTouchEnd">
         <div class="item-content">
           <text class="itemtext">{{$item.name}}</text>
           <text class="itemtext2">{{$item.subtitle}}</text>
@@ -30,8 +34,8 @@
       <list-item type="footer" class="list-padding"></list-item>
     </list>
 
-    <!-- 遮罩层：覆盖列表顶部 padding 区（0-86px），不遮挡列表项；按钮在遮罩之后渲染保持可点击 -->
-    <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0; width: 336px; height: 86px;" />
+    <!-- 遮罩层：CSS 渐变替代图片 -->
+    <div style="position: absolute; top: 0; left: 0; width: 336px; height: 70px; background: linear-gradient(to bottom, #000000 0%, rgba(0,0,0,0) 100%);"></div>
     <!-- 顶部按钮（在遮罩之上，保持可点击） -->
     <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
     <img static src="/common/images/more.png" @click="goSettings" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />
@@ -58,7 +62,11 @@ export default {
     isNavigating: false,
     // 知识点分片加载
     ready: true,
-    totalCount: 0
+    totalCount: 0,
+    // 手动长按检测
+    _lpTimer: null,
+    _lpItem: null,
+    _lpTriggered: false
   },
   protected: {
     path: '',
@@ -129,6 +137,10 @@ export default {
       clearTimeout(this.__loadTimer)
       this.__loadTimer = null
     }
+    if (this._lpTimer) {
+      clearTimeout(this._lpTimer)
+      this._lpTimer = null
+    }
   },
 
   loadData() {
@@ -157,7 +169,6 @@ export default {
       if (store && store.getKnowledge) {
         points = store.getKnowledge(this.knowledgeSubject)
       }
-      // 查询当前科目是否为导入科目
       var subjectImported = false
       try {
         var subjects = store.getSubjects()
@@ -236,13 +247,47 @@ export default {
     this._loadMoreChunk()
   },
 
+  // ---- 手动长按检测 ----
+  onItemTouchStart(item) {
+    this._lpTriggered = false
+    this._lpItem = item
+    var self = this
+    this._lpTimer = setTimeout(function() {
+      if (self._lpItem === item) {
+        self._lpTriggered = true
+        self._lpItem = null
+        self._lpTimer = null
+        self._doLongPress(item)
+      }
+    }, 600)
+  },
+
+  onItemTouchMove() {
+    if (this._lpTimer) {
+      clearTimeout(this._lpTimer)
+      this._lpTimer = null
+    }
+    this._lpItem = null
+  },
+
+  onItemTouchEnd() {
+    if (this._lpTimer) {
+      clearTimeout(this._lpTimer)
+      this._lpTimer = null
+    }
+    this._lpItem = null
+  },
+
   // 点击：正常导航
   onItemClick(item) {
+    if (this._lpTriggered) {
+      this._lpTriggered = false
+      return
+    }
     if (this.isNavigating) return
     if (!item) return
     this.isNavigating = true
 
-    // 知识点条目：导航到内容页
     if (item.type === 'knowledge_point') {
       router.push({
         uri: '/pages/content',
@@ -254,7 +299,6 @@ export default {
       return
     }
 
-    // 蓝牙传输文件夹内容
     if (this.path && this.path.startsWith('bt_')) {
       if (item.type === 'folder') {
         router.push({ uri: '/pages/subfolder', params: { path: item.id } })
@@ -264,13 +308,11 @@ export default {
       return
     }
 
-    // 内置示例
     if (this.path === 'builtin') {
       router.push({ uri: '/pages/reader', params: { path: item.id } })
       return
     }
 
-    // 内置内容：用 path + index
     var index = this.allItems.indexOf(item)
     var childPath = this.path + ',' + index
 
@@ -281,12 +323,11 @@ export default {
     }
   },
 
-  // 长按：跳转删除确认页
-  onItemLongPress(item) {
+  // 长按实际执行：跳转删除确认页
+  _doLongPress(item) {
     if (this.isNavigating) return
     if (!item) return
 
-    // 知识点条目：若所属科目为导入科目，长按可删除整科
     if (item.type === 'knowledge_point') {
       if (!item.imported) return
       this.isNavigating = true

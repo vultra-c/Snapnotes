@@ -27,8 +27,8 @@
       <div class="padding"></div>
     </scroll>
 
-    <!-- 遮罩层：覆盖顶部 UI 区（0-150px），不遮挡搜索结果滚动区（top:150px+） -->
-    <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0; width: 336px; height: 150px;" />
+    <!-- 遮罩层：CSS 渐变，覆盖顶部 UI 区（0-150px） -->
+    <div style="position: absolute; top: 0; left: 0; width: 336px; height: 150px; background: linear-gradient(to bottom, #0A0A0C 0%, rgba(10,10,12,0) 100%);"></div>
 
     <!-- 顶部栏（在遮罩之上，保持可点击） -->
     <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />

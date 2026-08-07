@@ -7,6 +7,15 @@
   background-color: #000000;
 }
 
+/* 页面平移进入动画（实验版，各页面根元素加 page-anim 类即生效） */
+@keyframes pageSlideIn {
+  from { transform: translateX(336px); }
+  to { transform: translateX(0); }
+}
+.page-anim {
+  animation: pageSlideIn 0.3s ease-out;
+}
+
 /* 列表容器 */
 .list {
   width: 336px;

@@ -7,13 +7,11 @@
       <text static style="line-height: 36px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.4); text-align: center; margin-top: 16px;">没有文件</text>
     </div>
 
-    <!-- 列表 -->
+    <!-- 文件夹列表 -->
     <list class="list" id="homeList" if="{{allItems.length > 0}}">
       <list-item for="{{visibleItems}}" tid="id" class="item" type="folder"
         @click="onItemClick($item)"
-        @longpress="onLongPress($item)"
-        @touchstart="onTouchStart"
-        @touchmove="onTouchMove">
+        @longpress="onLongPress($item)">
         <div class="item-content">
           <text class="itemtext">{{$item.name}}</text>
           <text class="itemtext2">{{$item.subtitle}}</text>
@@ -58,10 +56,6 @@ export default {
     visibleItems: [],
     isNavigating: false,
     longPressTriggered: false,
-    // 滑动误触防护
-    touchStartX: 0,
-    touchStartY: 0,
-    touchMoved: false,
     _unsubReceive: null
   },
 
@@ -187,13 +181,9 @@ export default {
 
   onItemClick(item) {
     if (this.isNavigating) return
+    // 如果长按刚刚触发，阻止click事件
     if (this.longPressTriggered) {
       this.longPressTriggered = false
-      return
-    }
-    // 滑动误触防护：手指移动超过阈值则不触发点击
-    if (this.touchMoved) {
-      this.touchMoved = false
       return
     }
     if (!item) return
@@ -236,6 +226,7 @@ export default {
       return
     }
 
+    // 标记长按已触发，阻止后续click事件
     this.longPressTriggered = true
     this.isNavigating = true
     router.push({
@@ -246,28 +237,6 @@ export default {
         name: item.name
       }
     })
-  },
-
-  // 滑动误触防护：记录触摸起点
-  onTouchStart(e) {
-    var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
-    if (t) {
-      this.touchStartX = t.clientX
-      this.touchStartY = t.clientY
-      this.touchMoved = false
-    }
-  },
-
-  // 滑动误触防护：手指移动超过 10px 判定为滑动，抑制后续 click
-  onTouchMove(e) {
-    var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
-    if (t) {
-      var dx = Math.abs(t.clientX - this.touchStartX)
-      var dy = Math.abs(t.clientY - this.touchStartY)
-      if (dx > 10 || dy > 10) {
-        this.touchMoved = true
-      }
-    }
   },
 
   goSettings() {

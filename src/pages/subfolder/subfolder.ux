@@ -63,7 +63,7 @@ export default {
     touchMoved: false,
     // 长按检测
     __longPressItem: null,
-    __longPressTimer: null
+    __longPressTimer: null,
     // 知识点分片加载：ready 为首屏分片是否完成；totalCount 为全量条目数
     ready: true,
     totalCount: 0

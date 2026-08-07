@@ -27,19 +27,17 @@
       <div class="padding"></div>
     </scroll>
 
-    <!-- 遮罩层：覆盖列表顶部形成渐变过渡，防止结果与上方UI重合 -->
-    <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0; width: 336px;" />
+    <!-- 遮罩层：覆盖顶部 UI 区（0-150px），不遮挡搜索结果滚动区（top:150px+） -->
+    <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0; width: 336px; height: 150px;" />
 
     <!-- 顶部栏（在遮罩之上，保持可点击） -->
     <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
     <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{ currentTime }}</text>
     <text static style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center;">搜索</text>
 
-    <!-- 搜索框（在遮罩之上，固定位置不受列表滚动影响） -->
-    <div class="search-bar" style="position: absolute; left: 0px; top: 86px; width: 336px; padding: 0 12px;">
-      <div class="search-bar__inner" @click="toggleKeyboard">
-        <text class="search-bar__text">{{ textValue || '搜索知识点...' }}</text>
-      </div>
+    <!-- 搜索框：用 left+width 直接定位，避免 padding 导致的布局漂移 -->
+    <div class="search-bar__inner" style="position: absolute; left: 12px; top: 86px; width: 312px; height: 56px; background-color: #18181A; border: 1px solid #2A2A2E; border-radius: 28px; padding: 0 24px; flex-direction: row; align-items: center;" @click="toggleKeyboard">
+      <text class="search-bar__text">{{ textValue || '搜索知识点...' }}</text>
     </div>
 
     <!-- 输入法键盘 -->

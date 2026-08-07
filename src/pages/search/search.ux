@@ -9,16 +9,22 @@
     <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{currentTime}}</text>
     <text static style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center;">搜索</text>
 
-    <!-- 搜索框（胶囊形，仿 Snapnotes .search-bar__inner），位于顶部栏下方 -->
-    <div class="search-bar" @click="toggleKeyboard">
-      <img static src="/common/images/search.png" class="search-bar__icon" />
-      <div class="search-bar__textwrap">
-        <text class="search-bar__text" show="{{textValue.length > 0}}">{{textValue}}</text>
-        <text class="search-bar__ph" show="{{textValue.length == 0}}">输入要搜索的内容</text>
+    <!-- 搜索框（胶囊形），内含搜索按钮 -->
+    <div class="search-bar">
+      <div class="search-bar__input-area" @click="toggleKeyboard">
+        <img static src="/common/images/search.png" class="search-bar__icon" />
+        <div class="search-bar__textwrap">
+          <text class="search-bar__text" show="{{textValue.length > 0}}">{{textValue}}</text>
+          <text class="search-bar__ph" show="{{textValue.length == 0}}">输入要搜索的内容</text>
+        </div>
+      </div>
+      <!-- 搜索按钮：有文字时显示，点击触发搜索 -->
+      <div class="search-btn" show="{{textValue.length > 0}}" @click="onSearchBtnClick">
+        <text class="search-btn-text" static>搜索</text>
       </div>
     </div>
 
-    <!-- 清空按钮：独立兄弟元素，避免与搜索框点击冲突（同原实现思路） -->
+    <!-- 清空按钮：独立兄弟元素，避免与搜索框点击冲突 -->
     <div class="clear-btn" show="{{textValue.length > 0}}" @click="clearSearch">
       <text class="clear-icon" static>×</text>
     </div>
@@ -202,6 +208,11 @@ export default {
       this.textValue = this.textValue.slice(0, -1)
       this.scheduleSearch()
     }
+  },
+
+  // 搜索按钮点击：立即触发搜索（跳过防抖，直接执行）
+  onSearchBtnClick() {
+    this.doSearch()
   },
 
   clearSearch() {
@@ -390,7 +401,7 @@ export default {
 <style>
   @import '../../common/style.css';
 
-  /* ---------- 搜索框（胶囊形） ---------- */
+  /* ---------- 搜索框（胶囊形，含搜索按钮） ---------- */
   .search-bar {
     position: absolute;
     left: 6px;
@@ -402,8 +413,14 @@ export default {
     border-radius: 28px;
     flex-direction: row;
     align-items: center;
+    overflow: hidden;           /* 搜索按钮右侧圆角与搜索框融合 */
+  }
+  .search-bar__input-area {
+    flex: 1;
+    height: 56px;
+    flex-direction: row;
+    align-items: center;
     padding-left: 14px;
-    padding-right: 56px;        /* 右侧留出清空按钮空间，避免文字被遮 */
   }
   .search-bar__icon {
     width: 28px;
@@ -427,6 +444,22 @@ export default {
     font-size: 24px;
     color: rgba(255, 255, 255, 0.3);
     lines: 1;
+  }
+
+  /* ---------- 搜索按钮（搜索框右侧，蓝色） ---------- */
+  .search-btn {
+    height: 56px;
+    padding-left: 14px;
+    padding-right: 16px;
+    justify-content: center;
+    align-items: center;
+    background-color: #2A6BFF;
+    flex-shrink: 0;
+  }
+  .search-btn-text {
+    font-size: 24px;
+    font-weight: bold;
+    color: #FFFFFF;
   }
 
   /* ---------- 清空按钮（独立兄弟元素，覆盖搜索框右侧） ---------- */

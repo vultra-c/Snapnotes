@@ -9,7 +9,7 @@
 
     <!-- 列表 -->
     <list class="list" id="homeList" if="{{allItems.length > 0}}">
-      <list-item for="{{visibleItems}}" tid="id" class="item" type="folder" @click="onItemClick($item)" @longpress="onLongPress($item)" @touchstart="onTouchStart" @touchmove="onTouchMove">
+      <list-item for="{{visibleItems}}" tid="id" class="item" type="folder" @click="onItemClick($item)" @touchstart="onTouchStart($item)" @touchmove="onTouchMove" @touchend="onTouchEnd">
         <div class="item-content">
           <text class="itemtext">{{$item.name}}</text>
           <text class="itemtext2">{{$item.subtitle}}</text>
@@ -20,10 +20,8 @@
       <list-item type="footer" class="list-padding"></list-item>
     </list>
 
-    <!-- 顶部栏 -->
+    <!-- 顶部栏（hd.png 自带渐变遮罩效果，同考点阅读页） -->
     <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
-    <!-- 顶部渐变遮罩（始终显示） -->
-    <img static src="/common/images/top_mask.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
     <img static src="/common/images/back.png" @click="exitApp" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
     <img static src="/common/images/more.png" @click="goSettings" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />
     <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>
@@ -59,7 +57,10 @@ export default {
     touchStartX: 0,
     touchStartY: 0,
     touchMoved: false,
-    _unsubReceive: null
+    _unsubReceive: null,
+    // 长按检测（非绑定字段，仅用于计时器引用）
+    __longPressTimer: null,
+    __longPressItem: null
   },
 
   onInit() {
@@ -248,25 +249,42 @@ export default {
     })
   },
 
-  // 滑动误触防护：记录触摸起点
-  onTouchStart(e) {
-    const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
-    if (t) {
-      this.touchStartX = t.clientX
-      this.touchStartY = t.clientY
-      this.touchMoved = false
+  // 滑动误触防护 + 长按检测：记录触摸起点，启动长按计时器
+  onTouchStart(item) {
+    this.touchStartX = 0
+    this.touchStartY = 0
+    this.touchMoved = false
+    // 存储当前触摸项，启动长按计时器
+    this.__longPressItem = item
+    if (this.__longPressTimer) {
+      clearTimeout(this.__longPressTimer)
+    }
+    this.__longPressTimer = setTimeout(() => {
+      this.__longPressTimer = null
+      if (this.__longPressItem && !this.touchMoved && !this.isNavigating) {
+        this.onLongPress(this.__longPressItem)
+      }
+      this.__longPressItem = null
+    }, 500)
+  },
+
+  // 滑动误触防护 + 长按取消：手指移动判定为滑动，取消长按
+  onTouchMove() {
+    this.touchMoved = true
+    // 手指移动时取消长按
+    if (this.__longPressTimer) {
+      clearTimeout(this.__longPressTimer)
+      this.__longPressTimer = null
+      this.__longPressItem = null
     }
   },
 
-  // 滑动误触防护：手指移动超过 10px 判定为滑动，抑制后续 click
-  onTouchMove(e) {
-    const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
-    if (t) {
-      const dx = Math.abs(t.clientX - this.touchStartX)
-      const dy = Math.abs(t.clientY - this.touchStartY)
-      if (dx > 10 || dy > 10) {
-        this.touchMoved = true
-      }
+  // 手指抬起：取消长按计时器（未到 500ms 即抬起不算长按）
+  onTouchEnd() {
+    if (this.__longPressTimer) {
+      clearTimeout(this.__longPressTimer)
+      this.__longPressTimer = null
+      this.__longPressItem = null
     }
   },
 

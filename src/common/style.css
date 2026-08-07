@@ -7,7 +7,7 @@
   background-color: #000000;
 }
 
-/* 滚动容器（替代 list，使 touch/longpress 事件可正常触发） */
+/* 列表容器 */
 .list {
   width: 336px;
   height: 480px;
@@ -15,7 +15,6 @@
   top: 0px;
   left: 0px;
   padding: 86px 6px;
-  flex-direction: column;
 }
 
 /* 列表项卡片 */

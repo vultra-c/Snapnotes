@@ -12,28 +12,24 @@
       <text static style="font-size: 24px; color: rgba(255,255,255,0.6);">加载中...</text>
     </div>
 
-    <!-- 滚动列表（用 scroll+div 替代 list+list-item，使 longpress/touch 事件可触发） -->
-    <scroll class="list" scroll-y="true" scroll-x="false" if="{{visibleItems.length > 0}}" @scrollbottom="loadMore">
-      <div for="{{visibleItems}}" class="item"
-        @click="onItemClick($idx)"
-        @longpress="onItemLongPress($idx)"
-        @touchstart="onItemTouchStart($idx)"
-        @touchmove="onItemTouchMove"
-        @touchend="onItemTouchEnd"
-        @touchcancel="onItemTouchEnd">
+    <!-- 列表 -->
+    <list class="list" if="{{visibleItems.length > 0}}" id="subList" @scrollbottom="loadMore">
+      <list-item for="{{visibleItems}}" tid="id" class="item" type="item"
+        @click="onItemClick($item)"
+        @longpress="onLongPress($item)"
+        @touchstart="onTouchStart"
+        @touchmove="onTouchMove">
         <div class="item-content">
           <text class="itemtext">{{$item.name}}</text>
           <text class="itemtext2">{{$item.subtitle}}</text>
         </div>
         <img static src="/common/images/enter.png" class="arrow" />
-      </div>
+      </list-item>
       <!-- 触底加载指示 -->
-      <div class="loading-more" if="{{knowledgeSubject && visibleItems.length < totalCount}}">
+      <list-item type="loading-more" class="loading-more" if="{{knowledgeSubject && visibleItems.length < totalCount}}">
         <text class="loading-more__text" static>正在加载...</text>
-      </div>
-      <!-- 底部占位 -->
-      <div class="list-padding"></div>
-    </scroll>
+      </list-item>
+    </list>
 
     <!-- 遮罩层 -->
     <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0; width: 336px; height: 86px;" />
@@ -61,13 +57,14 @@ export default {
     allItems: [],
     visibleItems: [],
     isNavigating: false,
+    longPressTriggered: false,
+    // 滑动误触防护
+    touchStartX: 0,
+    touchStartY: 0,
+    touchMoved: false,
     // 知识点分片加载
     ready: true,
-    totalCount: 0,
-    // 手动长按检测
-    _lpTimer: null,
-    _lpItemId: '',
-    _lpTriggered: false
+    totalCount: 0
   },
   protected: {
     path: '',
@@ -126,6 +123,7 @@ export default {
 
   onShow() {
     this.isNavigating = false
+    this.longPressTriggered = false
     this.loadData()
   },
 
@@ -137,10 +135,6 @@ export default {
     if (this.__loadTimer) {
       clearTimeout(this.__loadTimer)
       this.__loadTimer = null
-    }
-    if (this._lpTimer) {
-      clearTimeout(this._lpTimer)
-      this._lpTimer = null
     }
   },
 
@@ -248,55 +242,17 @@ export default {
     this._loadMoreChunk()
   },
 
-  // ---- 长按检测：@longpress 原生事件 + touch 事件双保险 ----
-  onItemLongPress(idx) {
-    var item = this.visibleItems[idx]
+  onItemClick(item) {
     if (this.isNavigating) return
-    if (!item) return
-    this._lpTriggered = true
-    this._doLongPress(item)
-  },
-
-  onItemTouchStart(idx) {
-    var item = this.visibleItems[idx]
-    this._lpTriggered = false
-    var itemId = item ? item.id : ''
-    this._lpItemId = itemId
-    var self = this
-    this._lpTimer = setTimeout(function() {
-      if (self._lpItemId === itemId) {
-        self._lpTriggered = true
-        self._lpItemId = ''
-        self._lpTimer = null
-        self._doLongPress(item)
-      }
-    }, 600)
-  },
-
-  onItemTouchMove() {
-    if (this._lpTimer) {
-      clearTimeout(this._lpTimer)
-      this._lpTimer = null
-    }
-    this._lpItemId = ''
-  },
-
-  onItemTouchEnd() {
-    if (this._lpTimer) {
-      clearTimeout(this._lpTimer)
-      this._lpTimer = null
-    }
-    this._lpItemId = ''
-  },
-
-  // 点击：正常导航
-  onItemClick(idx) {
-    var item = this.visibleItems[idx]
-    if (this._lpTriggered) {
-      this._lpTriggered = false
+    if (this.longPressTriggered) {
+      this.longPressTriggered = false
       return
     }
-    if (this.isNavigating) return
+    // 滑动误触防护：手指移动超过阈值则不触发点击
+    if (this.touchMoved) {
+      this.touchMoved = false
+      return
+    }
     if (!item) return
     this.isNavigating = true
 
@@ -335,13 +291,14 @@ export default {
     }
   },
 
-  // 长按实际执行：跳转删除确认页
-  _doLongPress(item) {
+  onLongPress(item) {
     if (this.isNavigating) return
     if (!item) return
 
+    // 知识点条目：若所属科目为导入科目，长按可删除整科
     if (item.type === 'knowledge_point') {
       if (!item.imported) return
+      this.longPressTriggered = true
       this.isNavigating = true
       router.push({
         uri: '/pages/deleteConfirm',
@@ -355,6 +312,7 @@ export default {
 
     if (this.path === 'builtin') return
 
+    this.longPressTriggered = true
     this.isNavigating = true
 
     if (this.path && this.path.startsWith('bt_')) {
@@ -381,6 +339,28 @@ export default {
     })
   },
 
+  // 滑动误触防护：记录触摸起点
+  onTouchStart(e) {
+    var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
+    if (t) {
+      this.touchStartX = t.clientX
+      this.touchStartY = t.clientY
+      this.touchMoved = false
+    }
+  },
+
+  // 滑动误触防护：手指移动超过 10px 判定为滑动，抑制后续 click
+  onTouchMove(e) {
+    var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
+    if (t) {
+      var dx = Math.abs(t.clientX - this.touchStartX)
+      var dy = Math.abs(t.clientY - this.touchStartY)
+      if (dx > 10 || dy > 10) {
+        this.touchMoved = true
+      }
+    }
+  },
+
   goSettings() {
     router.push({ uri: '/pages/globalSettings' })
   },
@@ -404,6 +384,11 @@ export default {
 
 <style>
   @import '../../common/style.css';
+  .list {
+    height: 394px;
+    top: 86px;
+    padding: 0px 6px;
+  }
   .list-padding {
     height: 90px;
     width: 100%;

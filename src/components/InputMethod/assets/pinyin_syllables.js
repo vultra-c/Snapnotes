@@ -3,7 +3,7 @@
  * 用于把连续拼音串切成单音节，配合 dic.js 的 py2hz 做多拼整词组合。
  * 与 dic.js 实际 key 取并集后建索引（见 dicUtil.js initDict）。
  */
-const syllables = [
+var syllables = [
   // a 系
   "a", "ai", "an", "ang", "ao",
   // b

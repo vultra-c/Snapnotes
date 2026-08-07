@@ -4,7 +4,7 @@
  * 惰性加载：对象在首次 getWords() 时才创建，避免模块加载时同步建 3000 词对象拖慢首屏。
  * 首字母简拼索引由生成脚本产出（dic_words_initials.js），initDict 直接引用。
  */
-let _words = null;
+var _words = null;
 function getWords() {
   if (_words) return _words;
   _words = {
@@ -1173,7 +1173,7 @@ function getWords() {
   "huitouzaishuo": "回头再说", "zoule": "走了", "daolema": "到了吗",
   "xinglema": "醒了吗", "zaiganma": "在干嘛", "yun": "晕",
   "guanjile": "关机了", "meidianle": "没电了", "wanyidian": "晚一点", "xiexieni": "谢谢你",
-  "shui": "谁", "ng": "嗯",};
+  "shui": "谁", "ng": "嗯"};
   return _words;
 }
 

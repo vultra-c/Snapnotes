@@ -3,9 +3,9 @@
 <template>
   <div class="container">
 
-    <img src="/common/images/back.png" @click="goBack" static style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
-    <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{ currentTime }}</text>
-    <text static style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center;">搜索</text>
+    <img class="leftButton top" src="/common/images/back.png" @click="goBack" static />
+    <text class="time">{{ currentTime }}</text>
+    <text class="title" static><span>搜索</span></text>
 
     <div style="height: 6px;"></div>
 
@@ -81,45 +81,11 @@ export default {
     // searchResults 保持空，首屏只画占位，避免进页瞬间渲染 150 张卡片的卡顿。
     // haystack 在此预算一次：把学科名/标题/描述/知识要点正文拼成单串并转小写，
     // 之后每次搜索只做 indexOf，不再每键重新 join + toLowerCase（这是输入卡顿的根因）。
-    // 数据源优先走 $app.$def.store.getAllItems（内置 + 用户导入合并后的全量扁平条目）；
-    // 若不可用则降级为 getSubjects() + getKnowledge() 逐科目构建。
+    // 数据源走 $app.$def.store.getAllItems（内置 + 用户导入合并后的全量扁平条目）。
     // ready=false 让 scroll 内只画「加载中」占位，把 150 条预算推到下一帧，
     // 标题/搜索框/背景先就位，进页顺滑（同 detail/knowledge 范式）。
     setTimeout(() => {
-      let rawItems = []
-      const store = this.$app.$def && this.$app.$def.store
-      // 优先尝试 getAllItems()
-      try {
-        if (store && typeof store.getAllItems === 'function') {
-          rawItems = store.getAllItems()
-        }
-      } catch (e) {
-        console.log('getAllItems failed: ' + e)
-      }
-      // 回退方案：通过 getSubjects() + getKnowledge() 逐科目构建
-      if ((!rawItems || rawItems.length === 0) && store && typeof store.getSubjects === 'function') {
-        try {
-          const subjects = store.getSubjects()
-          for (let s = 0; s < subjects.length; s++) {
-            const name = subjects[s].name
-            const knowledgeItems = store.getKnowledge(name)
-            if (knowledgeItems && knowledgeItems.length) {
-              for (let i = 0; i < knowledgeItems.length; i++) {
-                const it = knowledgeItems[i]
-                rawItems.push({
-                  title: it.title,
-                  desc: it.desc,
-                  points: it.points,
-                  subjectName: name
-                })
-              }
-            }
-          }
-        } catch (e2) {
-          console.log('fallback getSubjects/getKnowledge failed: ' + e2)
-        }
-      }
-      const items = rawItems || []
+      const items = this.$app.$def.store.getAllItems()
       const all = []
       // 分片构建：全部条目 join+toLowerCase 是长任务（语文等大 desc 条目很多），一次性执行
       // 会占住主线程造成进页后一段冻结。每片 30 条，片间 setTimeout 让出主线程渲染，

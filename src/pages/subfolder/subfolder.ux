@@ -1,39 +1,38 @@
 <template>
   <div class="page" style="flex-direction: column;" @swipe="onSwipe">
 
-    <!-- 空状态：文件夹模式无项 或 知识点模式加载完仍无项 -->
+    <!-- 空状态 -->
     <div if="{{(!knowledgeSubject && allItems.length == 0) || (knowledgeSubject && ready && totalCount == 0)}}" style="position: absolute; width: 336px; height: 480px; flex-direction: column; justify-content: center; align-items: center;">
       <img static src="/common/images/empty_state.png" style="width: 128px; height: 128px;" />
       <text static style="line-height: 42px; font-weight: bold; font-size: 28px; color: rgba(255,255,255,0.6); text-align: center; margin-top: 24px;">没有文件</text>
     </div>
 
-    <!-- 加载中占位（仅知识点模式，首屏分片加载未完成时显示） -->
+    <!-- 加载中占位（仅知识点模式） -->
     <div if="{{knowledgeSubject && !ready}}" style="position: absolute; width: 336px; height: 480px; flex-direction: column; justify-content: center; align-items: center;">
       <text static style="font-size: 24px; color: rgba(255,255,255,0.6);">加载中...</text>
     </div>
 
     <!-- 列表 -->
     <list class="list" if="{{visibleItems.length > 0}}" id="subList" @scrollbottom="loadMore">
-      <list-item for="{{visibleItems}}" tid="id" class="item" type="item">
-          <div style="width:100%;flex-direction:row;justify-content:space-between;align-items:center;"
-            @touchstart="onTouchStart($item, $event)" @touchend="onTouchEnd" @touchcancel="onTouchEnd">
-            <div class="item-content">
-              <text class="itemtext">{{$item.name}}</text>
-              <text class="itemtext2">{{$item.subtitle}}</text>
-            </div>
-            <img static src="/common/images/enter.png" class="arrow" />
-          </div>
-        </list-item>
-      <!-- 触底加载指示：知识点模式且还有更多未加载 -->
+      <list-item for="{{visibleItems}}" tid="id" class="item" type="item"
+        @click="onItemClick($item)" @longpress="onItemLongPress($item)">
+        <div class="item-content">
+          <text class="itemtext">{{$item.name}}</text>
+          <text class="itemtext2">{{$item.subtitle}}</text>
+        </div>
+        <img static src="/common/images/enter.png" class="arrow" />
+      </list-item>
+      <!-- 触底加载指示 -->
       <list-item type="loading-more" class="loading-more" if="{{knowledgeSubject && visibleItems.length < totalCount}}">
         <text class="loading-more__text" static>正在加载...</text>
       </list-item>
+      <!-- 底部占位 -->
+      <list-item type="footer" class="list-padding"></list-item>
     </list>
 
-    <!-- 遮罩层（放在最底部，作为背景层） -->
+    <!-- 遮罩层：放在 list 之后、按钮之前（参考喵喵电子书） -->
     <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0;" />
-    <!-- 顶部栏背景 -->
-    <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
+    <!-- 顶部按钮（在遮罩之上，保持可点击） -->
     <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
     <img static src="/common/images/more.png" @click="goSettings" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />
     <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>
@@ -57,15 +56,7 @@ export default {
     allItems: [],
     visibleItems: [],
     isNavigating: false,
-    longPressTriggered: false,
-    // 滑动误触防护：记录触摸起点和是否滑动
-    touchStartX: 0,
-    touchStartY: 0,
-    touchMoved: false,
-    // 长按检测
-    __longPressItem: null,
-    __longPressTimer: null,
-    // 知识点分片加载：ready 为首屏分片是否完成；totalCount 为全量条目数
+    // 知识点分片加载
     ready: true,
     totalCount: 0
   },
@@ -83,7 +74,6 @@ export default {
     })
 
     if (this.knowledgeSubject) {
-      // 知识点科目模式：从 knowledgeStore 加载知识点列表
       this.pageName = this.knowledgeSubject
     } else {
       this.pageName = dataManager.getNodeName(this.path) || '文件夹'
@@ -92,10 +82,10 @@ export default {
 
   _fmtClock(t) {
     if (this.timeFormat === '12h') {
-      const parts = t.split(':')
-      let h = parseInt(parts[0], 10) || 0
-      const m = parts[1] || '00'
-      const ampm = h >= 12 ? '下午' : '上午'
+      var parts = t.split(':')
+      var h = parseInt(parts[0], 10) || 0
+      var m = parts[1] || '00'
+      var ampm = h >= 12 ? '下午' : '上午'
       h = h % 12 || 12
       return ampm + ' ' + h + ':' + m
     }
@@ -110,16 +100,16 @@ export default {
         if (data) {
           this.timeFormat = data
         }
-        const now = new Date()
-        const hh = String(now.getHours()).padStart(2, '0')
-        const mm = String(now.getMinutes()).padStart(2, '0')
+        var now = new Date()
+        var hh = String(now.getHours()).padStart(2, '0')
+        var mm = String(now.getMinutes()).padStart(2, '0')
         this.nowTime = this._fmtClock(hh + ':' + mm)
       },
       fail: () => {
         if (!this.$valid) return
-        const now = new Date()
-        const hh = String(now.getHours()).padStart(2, '0')
-        const mm = String(now.getMinutes()).padStart(2, '0')
+        var now = new Date()
+        var hh = String(now.getHours()).padStart(2, '0')
+        var mm = String(now.getMinutes()).padStart(2, '0')
         this.nowTime = this._fmtClock(hh + ':' + mm)
       }
     })
@@ -127,7 +117,6 @@ export default {
 
   onShow() {
     this.isNavigating = false
-    this.longPressTriggered = false
     this.loadData()
   },
 
@@ -136,7 +125,6 @@ export default {
       offTimeChange(this.__unsubClock)
       this.__unsubClock = null
     }
-    // 清理分片加载定时器，避免页面销毁后回调写入已失效实例
     if (this.__loadTimer) {
       clearTimeout(this.__loadTimer)
       this.__loadTimer = null
@@ -145,12 +133,11 @@ export default {
 
   loadData() {
     if (this.knowledgeSubject) {
-      // 知识点模式：从 knowledgeStore 加载
       this.loadKnowledgePoints()
       return
     }
 
-    // 文件夹模式：从 dataManager 加载
+    // 文件夹模式
     dataManager.getVisibleChildren(this.path).then((children) => {
       if (!this.$valid) return
       this.allItems = children || []
@@ -159,19 +146,18 @@ export default {
   },
 
   loadKnowledgePoints() {
-    // 清理上一次未完成的分片加载，避免 onShow 重入时 __loadingMore 残留导致新加载被跳过
     if (this.__loadTimer) {
       clearTimeout(this.__loadTimer)
       this.__loadTimer = null
     }
     this.__loadingMore = false
     try {
-      const store = this.$app.$def && this.$app.$def.store
-      let points = null
+      var store = this.$app.$def && this.$app.$def.store
+      var points = null
       if (store && store.getKnowledge) {
         points = store.getKnowledge(this.knowledgeSubject)
       }
-      // 查询当前科目是否为导入科目（用于长按删除判定）
+      // 查询当前科目是否为导入科目
       var subjectImported = false
       try {
         var subjects = store.getSubjects()
@@ -184,20 +170,21 @@ export default {
       } catch (e) {}
 
       if (points && points.length > 0) {
-        // 全量数据存非绑定字段 __allList，避免几百条塞进数据观测系统造成卡顿
-        this.__allList = points.map((p, i) => ({
-          id: 'kp_' + i + '_' + (p.id || i),
-          name: p.title || ('知识点' + (i + 1)),
-          subtitle: (p.points && p.points.length > 0) ? (p.points.length + '个要点') : (p.desc || '知识点'),
-          type: 'knowledge_point',
-          knowledgeIndex: i,
-          knowledgeSubject: this.knowledgeSubject,
-          imported: subjectImported
-        }))
+        var that = this
+        this.__allList = points.map(function(p, i) {
+          return {
+            id: 'kp_' + i + '_' + (p.id || i),
+            name: p.title || ('知识点' + (i + 1)),
+            subtitle: (p.points && p.points.length > 0) ? (p.points.length + '个要点') : (p.desc || '知识点'),
+            type: 'knowledge_point',
+            knowledgeIndex: i,
+            knowledgeSubject: that.knowledgeSubject,
+            imported: subjectImported
+          }
+        })
         this.totalCount = this.__allList.length
         this.ready = false
         this.visibleItems = []
-        // 分片异步交付首屏，避免一次渲染全部 list-item 卡顿
         this._loadMoreChunk()
       } else {
         this.__allList = []
@@ -215,8 +202,6 @@ export default {
     if (!this.$valid) return
   },
 
-  // 分片异步加载：每次最多追加 12 条，内部按 BATCH=6 分片，片间 setTimeout(0) 让出主线程渲染。
-  // 初始首屏加载与 scrollbottom 触底加载共用此方法，__loadingMore 防重入。
   _loadMoreChunk() {
     if (this.__loadingMore) return
     if (this.visibleItems.length >= this.totalCount) {
@@ -224,71 +209,37 @@ export default {
       return
     }
     this.__loadingMore = true
-    const BATCH = 6
-    const target = Math.min(this.visibleItems.length + 12, this.totalCount)
-    const tick = () => {
-      if (!this.$valid) {
-        this.__loadTimer = null
-        this.__loadingMore = false
+    var BATCH = 6
+    var target = Math.min(this.visibleItems.length + 12, this.totalCount)
+    var that = this
+    var tick = function() {
+      if (!that.$valid) {
+        that.__loadTimer = null
+        that.__loadingMore = false
         return
       }
-      const cur = this.visibleItems.length
+      var cur = that.visibleItems.length
       if (cur >= target) {
-        this.__loadTimer = null
-        this.__loadingMore = false
-        this.ready = true
+        that.__loadTimer = null
+        that.__loadingMore = false
+        that.ready = true
         return
       }
-      const chunk = this.__allList.slice(cur, Math.min(cur + BATCH, target))
-      this.visibleItems = this.visibleItems.concat(chunk)
-      this.__loadTimer = setTimeout(tick, 0)
+      var chunk = that.__allList.slice(cur, Math.min(cur + BATCH, target))
+      that.visibleItems = that.visibleItems.concat(chunk)
+      that.__loadTimer = setTimeout(tick, 0)
     }
     tick()
   },
 
-  // scrollbottom 触底加载：委托给 _loadMoreChunk 统一分片异步交付
   loadMore() {
     this._loadMoreChunk()
   },
 
-  // 触摸开始：记录触摸位置，启动长按定时器
-  onTouchStart(item, evt) {
+  // 点击：正常导航
+  onItemClick(item) {
     if (this.isNavigating) return
-    this.touchMoved = false
-    this.touchStartX = evt.touches ? evt.touches[0].globalX || evt.touches[0].x : 0
-    this.touchStartY = evt.touches ? evt.touches[0].globalY || evt.touches[0].y : 0
-    this.__longPressItem = item
-    // 600ms 后触发长按
-    this.__longPressTimer = setTimeout(() => {
-      if (!this.$valid) return
-      this.__longPressTimer = null
-      this._doLongPress(this.__longPressItem)
-      this.__longPressItem = null
-    }, 600)
-  },
-
-  // 触摸结束：清除长按定时器，判断是点击还是滑动
-  onTouchEnd(evt) {
-    if (this.__longPressTimer) {
-      clearTimeout(this.__longPressTimer)
-      this.__longPressTimer = null
-    }
-    // 如果长按已触发，不再响应点击
-    if (this.longPressTriggered) {
-      this.longPressTriggered = false
-      this.__longPressItem = null
-      return
-    }
-    // 滑动误触防护：手指移动超过阈值则不触发点击
-    if (this.touchMoved) {
-      this.touchMoved = false
-      this.__longPressItem = null
-      return
-    }
-    // 正常点击
-    var item = this.__longPressItem
-    this.__longPressItem = null
-    if (!item || this.isNavigating) return
+    if (!item) return
     this.isNavigating = true
 
     // 知识点条目：导航到内容页
@@ -320,8 +271,8 @@ export default {
     }
 
     // 内置内容：用 path + index
-    const index = this.allItems.indexOf(item)
-    const childPath = this.path + ',' + index
+    var index = this.allItems.indexOf(item)
+    var childPath = this.path + ',' + index
 
     if (item.type === 'folder') {
       router.push({ uri: '/pages/subfolder', params: { path: childPath } })
@@ -330,13 +281,14 @@ export default {
     }
   },
 
-  _doLongPress(item) {
+  // 长按：跳转删除确认页
+  onItemLongPress(item) {
     if (this.isNavigating) return
+    if (!item) return
 
-    // 知识点条目：若所属科目为导入科目(imported=true)，长按可删除整科
+    // 知识点条目：若所属科目为导入科目，长按可删除整科
     if (item.type === 'knowledge_point') {
       if (!item.imported) return
-      this.longPressTriggered = true
       this.isNavigating = true
       router.push({
         uri: '/pages/deleteConfirm',
@@ -350,7 +302,6 @@ export default {
 
     if (this.path === 'builtin') return
 
-    this.longPressTriggered = true
     this.isNavigating = true
 
     if (this.path && this.path.startsWith('bt_')) {
@@ -365,8 +316,8 @@ export default {
       return
     }
 
-    const index = this.allItems.indexOf(item)
-    const childPath = this.path + ',' + index
+    var index = this.allItems.indexOf(item)
+    var childPath = this.path + ',' + index
     router.push({
       uri: '/pages/deleteConfirm',
       params: {
@@ -400,12 +351,11 @@ export default {
 
 <style>
   @import '../../common/style.css';
-  .list {
-    height: 394px;
-    top: 86px;
-    padding: 0px 6px;
+  .list-padding {
+    height: 90px;
+    width: 100%;
   }
-  /* 触底加载指示：list-item 需显式宽高以满足组件复用要求 */
+  /* 触底加载指示 */
   .loading-more {
     height: 60px;
     width: 100%;

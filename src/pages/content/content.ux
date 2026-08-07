@@ -161,7 +161,9 @@ export default {
     path: '',
     matchStart: -1,
     knowledgeSubject: '',
-    knowledgeIndex: -1
+    knowledgeIndex: -1,
+    subjectName: '',
+    title: ''
   },
 
   onInit() {
@@ -176,6 +178,24 @@ export default {
         this.saveProgress()
       }
     }, 60000)
+    // 搜索页传入 subjectName + title，需转换为 knowledgeSubject + knowledgeIndex
+    if (this.subjectName && !this.knowledgeSubject) {
+      this.knowledgeSubject = this.subjectName
+      if (this.title) {
+        var store = this.$app.$def && this.$app.$def.store
+        if (store && store.getKnowledge) {
+          var points = store.getKnowledge(this.knowledgeSubject)
+          if (points) {
+            for (var i = 0; i < points.length; i++) {
+              if (points[i].title === this.title) {
+                this.knowledgeIndex = i
+                break
+              }
+            }
+          }
+        }
+      }
+    }
     this.initContent()
   },
 

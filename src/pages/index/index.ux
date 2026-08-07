@@ -9,33 +9,30 @@
 
     <!-- 列表 -->
     <list class="list" id="homeList" if="{{allItems.length > 0}}">
-      <list-item for="{{visibleItems}}" tid="id" class="item" type="folder">
-          <div style="width:100%;flex-direction:row;justify-content:space-between;align-items:center;"
-            @touchstart="onTouchStart($item, $event)" @touchend="onTouchEnd" @touchcancel="onTouchEnd">
-            <div class="item-content">
-              <text class="itemtext">{{$item.name}}</text>
-              <text class="itemtext2">{{$item.subtitle}}</text>
-            </div>
-            <img static src="/common/images/enter.png" class="arrow" />
-          </div>
-        </list-item>
+      <list-item for="{{visibleItems}}" tid="id" class="item" type="folder"
+        @click="onItemClick($item)" @longpress="onItemLongPress($item)">
+        <div class="item-content">
+          <text class="itemtext">{{$item.name}}</text>
+          <text class="itemtext2">{{$item.subtitle}}</text>
+        </div>
+        <img static src="/common/images/enter.png" class="arrow" />
+      </list-item>
       <!-- 底部占位：防止悬浮按钮遮挡最后几条科目信息 -->
       <list-item type="footer" class="list-padding"></list-item>
     </list>
 
-    <!-- 遮罩层（放在最底部，作为背景层） -->
+    <!-- 遮罩层：放在 list 之后、按钮之前，覆盖列表顶部形成渐变过渡（参考喵喵电子书） -->
     <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0;" />
-    <!-- 顶部栏背景 -->
-    <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
+    <!-- 顶部按钮（在遮罩之上，保持可点击） -->
     <img static src="/common/images/back.png" @click="exitApp" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
     <img static src="/common/images/more.png" @click="goSettings" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />
     <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>
     <text static style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center;">闪念小抄</text>
 
-    <!-- 右下角全局搜索图标（闪念小抄样式） -->
+    <!-- 右下角全局搜索图标 -->
     <img static src="/common/images/search.png" @click="goSearch" class="fab fab--search" />
 
-    <!-- 左下角 AI 聊天图标（闪念小抄样式） -->
+    <!-- 左下角 AI 聊天图标 -->
     <img static src="/common/images/chat.png" @click="goChat" class="fab fab--chat" />
 
   </div>
@@ -57,15 +54,7 @@ export default {
     allItems: [],
     visibleItems: [],
     isNavigating: false,
-    longPressTriggered: false,
-    // 滑动误触防护
-    touchStartX: 0,
-    touchStartY: 0,
-    touchMoved: false,
-    _unsubReceive: null,
-    // 长按检测
-    __longPressItem: null,
-    __longPressTimer: null
+    _unsubReceive: null
   },
 
   onInit() {
@@ -89,10 +78,10 @@ export default {
 
   _fmtClock(t) {
     if (this.timeFormat === '12h') {
-      const parts = t.split(':')
-      let h = parseInt(parts[0], 10) || 0
-      const m = parts[1] || '00'
-      const ampm = h >= 12 ? '下午' : '上午'
+      var parts = t.split(':')
+      var h = parseInt(parts[0], 10) || 0
+      var m = parts[1] || '00'
+      var ampm = h >= 12 ? '下午' : '上午'
       h = h % 12 || 12
       return ampm + ' ' + h + ':' + m
     }
@@ -107,17 +96,16 @@ export default {
         if (data) {
           this.timeFormat = data
         }
-        // 重新格式化当前时间
-        const now = new Date()
-        const hh = String(now.getHours()).padStart(2, '0')
-        const mm = String(now.getMinutes()).padStart(2, '0')
+        var now = new Date()
+        var hh = String(now.getHours()).padStart(2, '0')
+        var mm = String(now.getMinutes()).padStart(2, '0')
         this.nowTime = this._fmtClock(hh + ':' + mm)
       },
       fail: () => {
         if (!this.$valid) return
-        const now = new Date()
-        const hh = String(now.getHours()).padStart(2, '0')
-        const mm = String(now.getMinutes()).padStart(2, '0')
+        var now = new Date()
+        var hh = String(now.getHours()).padStart(2, '0')
+        var mm = String(now.getMinutes()).padStart(2, '0')
         this.nowTime = this._fmtClock(hh + ':' + mm)
       }
     })
@@ -125,7 +113,6 @@ export default {
 
   onShow() {
     this.isNavigating = false
-    this.longPressTriggered = false
     if (appState.needRefreshList) {
       appState.needRefreshList = false
     }
@@ -144,16 +131,16 @@ export default {
   },
 
   loadData() {
-    const items = []
+    var items = []
 
-    // 1) 加载知识点科目（来自闪念小抄 knowledgeStore）
+    // 1) 加载知识点科目
     try {
-      const store = this.$app.$def && this.$app.$def.store
+      var store = this.$app.$def && this.$app.$def.store
       if (store && store.getSubjects) {
-        const subjects = store.getSubjects()
+        var subjects = store.getSubjects()
         if (subjects && subjects.length > 0) {
-          for (let i = 0; i < subjects.length; i++) {
-            const s = subjects[i]
+          for (var i = 0; i < subjects.length; i++) {
+            var s = subjects[i]
             items.push({
               id: 'kd_' + i + '_' + s.name,
               name: s.name,
@@ -169,11 +156,11 @@ export default {
       console.log('load knowledge subjects error: ' + e)
     }
 
-    // 2) 加载考点阅读器的文件夹/文件（来自 dataManager）
+    // 2) 加载考点阅读器的文件夹/文件
     dataManager.getTopLevelFolders().then((folders) => {
       if (folders) {
         folders.forEach((folder) => {
-          const subtitle = folder.type === 'folder' ? '文件夹' : '考点'
+          var subtitle = folder.type === 'folder' ? '文件夹' : '考点'
           items.push({
             id: folder.id,
             name: folder.name,
@@ -192,44 +179,10 @@ export default {
     })
   },
 
-  // 触摸开始：记录触摸位置，启动长按定时器
-  onTouchStart(item, evt) {
+  // 点击：正常导航
+  onItemClick(item) {
     if (this.isNavigating) return
-    this.touchMoved = false
-    this.touchStartX = evt.touches ? evt.touches[0].globalX || evt.touches[0].x : 0
-    this.touchStartY = evt.touches ? evt.touches[0].globalY || evt.touches[0].y : 0
-    this.__longPressItem = item
-    // 600ms 后触发长按
-    this.__longPressTimer = setTimeout(() => {
-      if (!this.$valid) return
-      this.__longPressTimer = null
-      this._doLongPress(this.__longPressItem)
-      this.__longPressItem = null
-    }, 600)
-  },
-
-  // 触摸结束：清除长按定时器，判断是点击还是滑动
-  onTouchEnd(evt) {
-    if (this.__longPressTimer) {
-      clearTimeout(this.__longPressTimer)
-      this.__longPressTimer = null
-    }
-    // 如果长按已触发，不再响应点击
-    if (this.longPressTriggered) {
-      this.longPressTriggered = false
-      this.__longPressItem = null
-      return
-    }
-    // 滑动误触防护：手指移动超过阈值则不触发点击
-    if (this.touchMoved) {
-      this.touchMoved = false
-      this.__longPressItem = null
-      return
-    }
-    // 正常点击
-    var item = this.__longPressItem
-    this.__longPressItem = null
-    if (!item || this.isNavigating) return
+    if (!item) return
     this.isNavigating = true
 
     if (item.type === 'knowledge') {
@@ -250,13 +203,14 @@ export default {
     }
   },
 
-  _doLongPress(item) {
+  // 长按：跳转删除确认页
+  onItemLongPress(item) {
     if (this.isNavigating) return
+    if (!item) return
 
-    // 知识点科目：仅导入科目(imported=true)可长按删除，内置科目不可删
+    // 知识点科目：仅导入科目可长按删除
     if (item.type === 'knowledge') {
       if (!item.imported) return
-      this.longPressTriggered = true
       this.isNavigating = true
       router.push({
         uri: '/pages/deleteConfirm',
@@ -268,7 +222,6 @@ export default {
       return
     }
 
-    this.longPressTriggered = true
     this.isNavigating = true
     router.push({
       uri: '/pages/deleteConfirm',
@@ -311,11 +264,6 @@ export default {
 
 <style>
   @import '../../common/style.css';
-  .list {
-    height: 394px;
-    top: 86px;
-    padding: 0px 6px;
-  }
   .list-padding {
     height: 90px;
     width: 100%;

@@ -359,11 +359,6 @@ export default {
 
 <style>
   @import '../../common/style.css';
-  .list {
-    height: 394px;
-    top: 86px;
-    padding: 0px 6px;
-  }
   .list-padding {
     height: 90px;
     width: 100%;

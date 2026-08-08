@@ -1,11 +1,23 @@
-import interconnect from "@system.interconnect";
-
 /**
  * interconn - 蓝牙通信连接管理器
  *
  * 彻底移除所有 ES2022+ 语法（class fields、static fields、object spread/rest），
  * 改用传统构造函数 + prototype 模式，保证小米手环 10 Pro 旧引擎兼容。
+ * 使用延迟加载 @system.interconnect，避免 10 Pro 安装时 feature 不支持导致失败。
  */
+
+var _interconnect = null;
+
+function _getInterconnect() {
+  if (_interconnect !== null) return _interconnect;
+  try {
+    _interconnect = require('@system.interconnect').default || require('@system.interconnect');
+  } catch (e) {
+    console.log('[interconn] require @system.interconnect FAIL: ' + e);
+    _interconnect = false;
+  }
+  return _interconnect;
+}
 
 function interconn() {
   var self = this;
@@ -13,8 +25,14 @@ function interconn() {
   this.eventListeners = [];
   this.connected = false;
 
+  var ic = _getInterconnect();
+  if (!ic) {
+    console.log('[interconn] @system.interconnect not available');
+    return;
+  }
+
   try {
-    this.conn = interconnect.instance();
+    this.conn = ic.instance();
   } catch (e) {
     console.log('[interconn] interconnect.instance FAIL: ' + e);
     return;

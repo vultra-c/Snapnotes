@@ -3,6 +3,49 @@
 
     <!-- 滚动容器 -->
     <scroll class="box" scroll-x="false" scroll-y="true" bounces="true">
+
+      <!-- 接收状态卡（合并原 push.ux 功能） -->
+      <div class="imp-item">
+        <div class="imp-card imp-card--push">
+          <!-- 等待连接 -->
+          <div if="{{pushState == 'wait'}}" style="flex-direction: column; align-items: center; width: 100%;">
+            <img static src="/common/images/connect.png" style="width: 64px; height: 64px; margin-bottom: 12px;" />
+            <text class="imp-push-title">等待连接</text>
+            <text class="imp-push-hint">请在手机端打开《闪念小抄》并连接手环</text>
+          </div>
+          <!-- 已连接 -->
+          <div if="{{pushState == 'ready'}}" style="flex-direction: column; align-items: center; width: 100%;">
+            <img static src="/common/images/choose.png" style="width: 64px; height: 64px; margin-bottom: 12px;" />
+            <text class="imp-push-title">连接成功</text>
+            <text class="imp-push-hint">请在手机端选择考点文件并发送</text>
+          </div>
+          <!-- 接收中 -->
+          <div if="{{pushState == 'receiving'}}" style="flex-direction: column; width: 100%;">
+            <div style="flex-direction: row; align-items: center; margin-bottom: 12px;">
+              <img static src="/common/images/download.png" style="width: 40px; height: 40px; margin-right: 10px;" />
+              <text class="imp-push-title">正在接收</text>
+              <text style="color: rgb(100,181,246); font-size: 22px; font-weight: bold; margin-left: auto;">{{pushPercent}}%</text>
+            </div>
+            <text style="color: rgba(255,255,255,0.8); font-size: 22px; font-weight: bold; lines: 1; text-overflow: ellipsis; margin-bottom: 8px;">{{pushFileName}}</text>
+            <progress percent="{{pushPercent}}" style="width: 100%; height: 6px; color: #1976D2;" />
+            <text if="{{pushTransferRate}}" style="font-size: 18px; color: rgba(153,153,153,1); margin-top: 6px; text-align: center; width: 100%;">{{pushTransferRate}}</text>
+          </div>
+          <!-- 接收成功 -->
+          <div if="{{pushState == 'saved'}}" style="flex-direction: column; align-items: center; width: 100%;">
+            <img static src="/common/images/succ.png" style="width: 64px; height: 64px; margin-bottom: 12px;" />
+            <text class="imp-push-title">接收成功</text>
+            <text style="color: rgb(100,181,246); font-size: 22px; font-weight: bold; text-align: center; margin-top: 4px;">{{pushFileName}}</text>
+            <text class="imp-push-hint">已保存到 {{savedFolder}}</text>
+          </div>
+          <!-- 接收失败 -->
+          <div if="{{pushState == 'error'}}" style="flex-direction: column; align-items: center; width: 100%;">
+            <img static src="/common/images/error.png" style="width: 64px; height: 64px; margin-bottom: 12px;" />
+            <text class="imp-push-title">接收失败</text>
+            <text class="imp-push-hint">{{pushErrorMsg}}</text>
+          </div>
+        </div>
+      </div>
+
       <!-- 监听状态卡 -->
       <div class="imp-item">
         <div class="imp-card imp-card--status">
@@ -11,14 +54,6 @@
             <text class="imp-status-text">{{ listening ? '正在监听手机端推送' : '未监听手机端' }}</text>
           </div>
           <text class="imp-status-hint" static>{{ featureHint }}</text>
-        </div>
-      </div>
-
-      <!-- 本地自验入口 -->
-      <div class="imp-item">
-        <div class="imp-card imp-card--action" @click="importSample">
-          <text class="imp-action-title">导入示例知识点</text>
-          <text class="imp-action-hint" static>本地自验：整条链路就这一下</text>
         </div>
       </div>
 
@@ -54,10 +89,10 @@
       <div class="padding"></div>
     </scroll>
 
-    <!-- 遮罩层 -->
-    <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0; width: 336px; height: 86px;" />
+    <!-- 顶部遮罩 -->
+    <img static src="/common/images/hd.png" style="position: absolute; top: 0; left: 0; width: 336px; height: 102px;" />
 
-    <!-- 顶部栏（与主页/文件夹页统一：绝对定位） -->
+    <!-- 顶部栏 -->
     <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
     <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{ currentTime }}</text>
     <text static style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center;">知识点管理</text>
@@ -69,6 +104,7 @@
 import app from '@system.app'
 import router from '@system.router'
 import prompt from '@system.prompt'
+import vibrator from '@system.vibrator'
 import { onTimeChange, offTimeChange } from '../../common/clock'
 
 // 复用 extras/sample 作为本地自验假数据
@@ -81,13 +117,47 @@ export default {
     featureHint: '',
     logs: [],
     importedSubjects: [],
-    __confirmTimer: null
+    __confirmTimer: null,
+    // push 状态（合并自 push.ux）
+    pushState: 'wait',
+    pushPercent: 0,
+    pushFileName: '',
+    pushErrorMsg: '',
+    pushTransferRate: '',
+    savedFolder: '主页',
+    autoReturnTimer: null,
+    lastProgress: 0,
+    lastRateTime: 0,
+    lastReceived: 0,
+    totalChars: 0
   },
 
   onInit() {
-    this.__unsubClock = onTimeChange((t) => { this.currentTime = t })
+    this.__unsubClock = onTimeChange((t) => {
+      if (this.$valid) {
+        this.currentTime = this._fmtClock(t)
+      }
+    })
     this._probeFeature()
     this._attachReceiveLog()
+    this._setupPushCallback()
+    this._refreshImported()
+  },
+
+  onShow() {
+    if (!this.$valid) return
+    // 刷新连接状态
+    var conn = this.$app.$def.getConn ? this.$app.$def.getConn() : null
+    if (conn && conn.connected) {
+      if (this.pushState === 'wait') {
+        this.pushState = 'ready'
+      }
+    } else {
+      if (this.pushState !== 'receiving' && this.pushState !== 'saved' && this.pushState !== 'error') {
+        this.pushState = 'wait'
+      }
+    }
+    // 刷新已导入列表
     this._refreshImported()
   },
 
@@ -98,6 +168,22 @@ export default {
     if (this.__unsubReceive) {
       this.__unsubReceive()
     }
+    if (this.autoReturnTimer) {
+      clearTimeout(this.autoReturnTimer)
+      this.autoReturnTimer = null
+    }
+    // 清除 push 回调
+    var cf = this.$app.$def.getConnfile ? this.$app.$def.getConnfile() : null
+    if (cf) {
+      cf.setCallback(function() {})
+    }
+  },
+
+  _fmtClock(t) {
+    var parts = t.split(':')
+    var h = parseInt(parts[0], 10) || 0
+    var m = parts[1] || '00'
+    return h + ':' + m
   },
 
   goBack() {
@@ -105,7 +191,7 @@ export default {
   },
 
   log(s) {
-    const next = this.logs.concat([s])
+    var next = this.logs.concat([s])
     if (next.length > 30) {
       next.splice(0, next.length - 30)
     }
@@ -113,8 +199,8 @@ export default {
   },
 
   _probeFeature() {
-    const canIc = app.canIUse('@system.interconnect')
-    const canFile = app.canIUse('@system.file')
+    var canIc = app.canIUse('@system.interconnect')
+    var canFile = app.canIUse('@system.file')
     if (canIc && canFile) {
       this.featureHint = '手机端配套 app 发送知识点 JSON 后自动接收并入'
     } else if (canIc && !canFile) {
@@ -126,15 +212,17 @@ export default {
   },
 
   _attachReceiveLog() {
-    this.__unsubReceive = this.$app.$def.onReceive((evt) => {
+    var that = this
+    this.__unsubReceive = this.$app.$def.onReceive(function(evt) {
       if (!evt) return
+      if (!that.$valid) return
       if (evt.kind === 'imported') {
-        const ps = evt.persisted ? ('已落盘') : ('未落盘 code=' + (evt.persistCode || ''))
-        this.log('收到并入 len=' + evt.len + ' 字符，' + ps)
+        var ps = evt.persisted ? '已落盘' : '未落盘 code=' + (evt.persistCode || '')
+        that.log('收到并入 len=' + evt.len + ' 字符，' + ps)
       } else if (evt.kind === 'empty') {
-        this.log('收到空消息')
+        that.log('收到空消息')
       } else if (evt.kind === 'userdata-changed') {
-        this._refreshImported()
+        that._refreshImported()
       }
     })
     if (this.$app.$def.interconnect) {
@@ -142,11 +230,120 @@ export default {
     }
   },
 
+  // ====== Push 回调（合并自 push.ux） ======
+  _setupPushCallback() {
+    var that = this
+    var connfile = this.$app.$def.getConnfile ? this.$app.$def.getConnfile() : null
+    if (connfile) {
+      connfile.setCallback(function(data) {
+        if (!that.$valid) return
+        switch (data.msg) {
+          case 'start':
+            that.pushState = 'receiving'
+            that.pushFileName = data.filename || ''
+            that.pushPercent = 0
+            that.pushTransferRate = ''
+            that.lastProgress = 0
+            that.lastReceived = 0
+            that.lastRateTime = Date.now()
+            that.totalChars = (data.totalChars ? parseInt(data.totalChars) : (data.wordCount ? parseInt(data.wordCount) : 0))
+            break
+          case 'next':
+            that.pushState = 'receiving'
+            that.pushFileName = data.filename || that.pushFileName
+            that._updateTransferRate(data.progress || 0, data.received)
+            that.pushPercent = Math.floor((data.progress || 0) * 100)
+            break
+          case 'success':
+            that.pushState = 'saved'
+            that._vibrate(100)
+            var cf = that.$app.$def.getConnfile ? that.$app.$def.getConnfile() : null
+            if (cf && cf.targetFolder) {
+              var tf = cf.targetFolder
+              if (tf === 'bt_root' || !tf) {
+                that.savedFolder = '主页'
+              } else if (tf.indexOf('bt_folder_') === 0) {
+                that.savedFolder = '文件夹'
+              } else {
+                that.savedFolder = tf
+              }
+            }
+            that._refreshImported()
+            if (that.autoReturnTimer) clearTimeout(that.autoReturnTimer)
+            that.autoReturnTimer = setTimeout(function() {
+              if (!that.$valid) return
+              that.pushState = 'ready'
+            }, 2000)
+            break
+          case 'cancel':
+            that.pushState = 'ready'
+            break
+          case 'error':
+            that.pushState = 'error'
+            that.pushErrorMsg = data.error || '未知错误'
+            that._vibrate([50, 50, 50])
+            if (that.autoReturnTimer) {
+              clearTimeout(that.autoReturnTimer)
+              that.autoReturnTimer = null
+            }
+            break
+        }
+      })
+    }
+
+    // 检查当前连接状态
+    var conn = this.$app.$def.getConn ? this.$app.$def.getConn() : null
+    if (conn && conn.connected) {
+      this.pushState = 'ready'
+    } else {
+      this.pushState = 'wait'
+    }
+  },
+
+  _updateTransferRate(progress, received) {
+    var now = Date.now()
+    var receivedChars = 0
+    if (received != null) {
+      receivedChars = parseInt(received) || 0
+    } else if (this.totalChars > 0) {
+      receivedChars = Math.round(progress * this.totalChars)
+    }
+
+    if (this.lastRateTime > 0 && now > this.lastRateTime) {
+      var dt = (now - this.lastRateTime) / 1000
+      if (dt > 0) {
+        var delta = 0
+        if (receivedChars > 0 || this.lastReceived > 0) {
+          delta = receivedChars - this.lastReceived
+        } else if (this.totalChars > 0) {
+          delta = Math.round((progress - this.lastProgress) * this.totalChars)
+        }
+        if (delta > 0) {
+          var rate = Math.round(delta / dt)
+          if (rate > 0) {
+            this.pushTransferRate = rate + ' 字/秒'
+          }
+        }
+      }
+    }
+    this.lastProgress = progress
+    this.lastRateTime = now
+    this.lastReceived = receivedChars
+  },
+
+  _vibrate(duration) {
+    try {
+      vibrator.vibrate({ duration: duration })
+    } catch (e) {
+      // 振动不可用时忽略
+    }
+  },
+
   importSample() {
     prompt.showToast({ message: '导入中...', duration: 800 })
     try {
-      const jsonStr = JSON.stringify(samplePkg)
-      const r = this.$app.$def.receiveImportedJSON(jsonStr)
+      var jsonStr = JSON.stringify(samplePkg)
+      var r = this.$app.$def.receiveImportedJSON(jsonStr)
       if (r.ok) {
         this.log('自验导入成功 len=' + r.len + (r.persisted ? ' 已落盘' : ' 未落盘'))
         prompt.showToast({ message: '已导入「拓展物理」', duration: 1500 })
@@ -161,9 +358,9 @@ export default {
   },
 
   _refreshImported() {
-    const all = this.$app.$def.store.getSubjects()
-    const next = []
-    for (let i = 0; i < all.length; i++) {
+    var all = this.$app.$def.store.getSubjects()
+    var next = []
+    for (var i = 0; i < all.length; i++) {
       if (all[i].imported) {
         next.push({ name: all[i].name, count: all[i].count, confirming: false })
       }
@@ -177,11 +374,11 @@ export default {
 
   onSubjectDelete(idx) {
     if (idx < 0 || idx >= this.importedSubjects.length) return
-    const wasConfirming = this.importedSubjects[idx].confirming
-    const itemName = this.importedSubjects[idx].name
+    var wasConfirming = this.importedSubjects[idx].confirming
+    var itemName = this.importedSubjects[idx].name
     if (this.__confirmTimer) { clearTimeout(this.__confirmTimer); this.__confirmTimer = null }
-    const next = []
-    for (let j = 0; j < this.importedSubjects.length; j++) {
+    var next = []
+    for (var j = 0; j < this.importedSubjects.length; j++) {
       next.push({
         name: this.importedSubjects[j].name,
         count: this.importedSubjects[j].count,
@@ -190,14 +387,14 @@ export default {
     }
     this.importedSubjects = next
     if (wasConfirming) {
-      const result = this.$app.$def.removeImportedSubject(itemName)
+      var result = this.$app.$def.removeImportedSubject(itemName)
       if (result && result.ok) {
         prompt.showToast({ message: '已删除「' + itemName + '」', duration: 1500 })
         this._refreshImported()
       } else {
         prompt.showToast({ message: '删除失败', duration: 2000 })
-        const retry = []
-        for (let k = 0; k < this.importedSubjects.length; k++) {
+        var retry = []
+        for (var k = 0; k < this.importedSubjects.length; k++) {
           retry.push({
             name: this.importedSubjects[k].name,
             count: this.importedSubjects[k].count,
@@ -207,17 +404,18 @@ export default {
         this.importedSubjects = retry
       }
     } else {
-      this.__confirmTimer = setTimeout(() => {
-        const restore = []
-        for (let k = 0; k < this.importedSubjects.length; k++) {
+      var that = this
+      this.__confirmTimer = setTimeout(function() {
+        var restore = []
+        for (var k2 = 0; k2 < that.importedSubjects.length; k2++) {
           restore.push({
-            name: this.importedSubjects[k].name,
-            count: this.importedSubjects[k].count,
+            name: that.importedSubjects[k2].name,
+            count: that.importedSubjects[k2].count,
             confirming: false
           })
         }
-        this.importedSubjects = restore
-        this.__confirmTimer = null
+        that.importedSubjects = restore
+        that.__confirmTimer = null
       }, 4000)
     }
   }
@@ -227,13 +425,13 @@ export default {
 <style>
 @import '../../common/style.css';
 
-/* 滚动容器：从 86px 开始（header 下方），铺满剩余空间 */
+/* 滚动容器：从 102px 开始（header 下方），铺满剩余空间 */
 .box {
   position: absolute;
   left: 0px;
-  top: 86px;
+  top: 102px;
   width: 336px;
-  height: 394px;
+  height: 378px;
   flex-direction: column;
   align-items: center;
 }
@@ -259,6 +457,29 @@ export default {
   border: 1px solid #2A2A2E;
   border-radius: 20px;
   padding: 16px 20px;
+}
+
+/* Push 状态卡 */
+.imp-card--push {
+  align-items: center;
+  min-height: 80px;
+  justify-content: center;
+}
+
+.imp-push-title {
+  color: #FFFFFF;
+  font-size: 28px;
+  font-weight: bold;
+  text-align: center;
+  line-height: 36px;
+}
+
+.imp-push-hint {
+  color: #98989E;
+  font-size: 20px;
+  text-align: center;
+  margin-top: 6px;
+  line-height: 28px;
 }
 
 /* 状态卡 */
@@ -297,26 +518,6 @@ export default {
   font-size: 20px;
   line-height: 28px;
   margin-top: 8px;
-}
-
-/* 动作卡 */
-.imp-card--action {
-  align-items: center;
-  justify-content: center;
-}
-
-.imp-action-title {
-  color: #7899BB;
-  font-size: 28px;
-  font-weight: bold;
-}
-
-.imp-action-hint {
-  color: #98989E;
-  font-size: 20px;
-  margin-top: 6px;
-  line-height: 28px;
-  text-align: center;
 }
 
 /* 管理卡 */

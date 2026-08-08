@@ -31,8 +31,6 @@
     <img static src="/common/images/search.png" @click="goSearch" class="fab fab--search" />
     <!-- 左下角 AI 聊天图标 -->
     <img static src="/common/images/chat.png" @click="goChat" class="fab fab--chat" />
-    <!-- 底部中间添加按钮 -->
-    <img static src="/common/images/plus.png" @click="goAddAction" class="fab fab--add" />
 
   </div>
 </template>
@@ -244,7 +242,7 @@ export default {
   },
 
   goSettings() {
-    router.push({ uri: '/pages/globalSettings' })
+    router.push({ uri: '/pages/globalSettings', params: { currentPath: 'bt_root' } })
   },
 
   goSearch() {
@@ -253,10 +251,6 @@ export default {
 
   goChat() {
     router.push({ uri: '/pages/chat' })
-  },
-
-  goAddAction() {
-    router.push({ uri: '/pages/addAction', params: { path: 'bt_root' } })
   },
 
   exitApp() {

@@ -452,6 +452,36 @@ class SnapNotesViewModel(application: Application) : AndroidViewModel(applicatio
         _screen.value = AppScreen.History
     }
 
+    fun openStore() {
+        // 商店页是底部导航的一部分，不需要切换 AppScreen
+    }
+
+    /**
+     * 从商店导入科目知识点到编辑器并推送到手环。
+     * 将商店的 StoreSubject 转为编辑器格式，同时直接生成 JSON 推送。
+     */
+    fun importStoreSubject(subject: com.whyy.snapnotes.data.StoreSubject) {
+        viewModelScope.launch {
+            val json = buildString {
+                append("{")
+                append("\"${subject.name}\":[")
+                subject.entries.forEachIndexed { index, entry ->
+                    if (index > 0) append(",")
+                    append("{")
+                    append("\"id\":\"${entry.id}\",")
+                    append("\"title\":\"${entry.title.replace("\"", "\\\"")}\",")
+                    append("\"desc\":\"${entry.desc.replace("\"", "\\\"")}\",")
+                    append("\"raw\":\"\",")
+                    append("\"points\":[]")
+                    append("}")
+                }
+                append("]")
+                append("}")
+            }
+            pushFromString(json, "商店_${subject.name}.json")
+        }
+    }
+
     fun setAppearanceMode(mode: AppearanceMode) {
         _appearanceMode.value = mode
         prefs.edit().putString(appearanceModeKey, mode.name).apply()

@@ -18,5 +18,4 @@ android-app/app/build/
 android-app/local.properties
 android-app/captures/
 android-app/.idea/
-android-app/*.jks
-android-app/release.jks
+android-app/debug.keystore

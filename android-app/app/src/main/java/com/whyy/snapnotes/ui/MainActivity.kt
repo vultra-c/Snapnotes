@@ -71,6 +71,9 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.File
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.icon.extended.VerticalSplit
+import top.yukonga.miuix.kmp.icon.extended.Notes
+import com.whyy.snapnotes.ui.screens.StoreScreen
+import com.whyy.snapnotes.data.StoreSubject
 
 sealed interface Screen : NavKey {
     data object HomePager : Screen
@@ -215,7 +218,7 @@ class MainActivity : ComponentActivity() {
                 val backStack = remember { mutableStateListOf<NavKey>(Screen.HomePager) }
                 val currentScreen = backStack.lastOrNull() ?: Screen.HomePager
                 val pagerState = rememberPagerState(
-                    pageCount = { 3 },
+                    pageCount = { 4 },
                     initialPage = 0
                 )
 
@@ -300,17 +303,26 @@ class MainActivity : ComponentActivity() {
                                     NavigationBarItem(
                                         selected = pagerState.currentPage == 1,
                                         onClick = {
-                                            viewModel.openHistory()
+                                            viewModel.openStore()
                                             scope.launch { pagerState.animateScrollToPage(1) }
+                                        },
+                                        icon = MiuixIcons.Notes,
+                                        label = "商店"
+                                    )
+                                    NavigationBarItem(
+                                        selected = pagerState.currentPage == 2,
+                                        onClick = {
+                                            viewModel.openHistory()
+                                            scope.launch { pagerState.animateScrollToPage(2) }
                                         },
                                         icon = MiuixIcons.File,
                                         label = "历史"
                                     )
                                     NavigationBarItem(
-                                        selected = pagerState.currentPage == 2,
+                                        selected = pagerState.currentPage == 3,
                                         onClick = {
                                             viewModel.openSettings()
-                                            scope.launch { pagerState.animateScrollToPage(2) }
+                                            scope.launch { pagerState.animateScrollToPage(3) }
                                         },
                                         icon = MiuixIcons.Settings,
                                         label = "设置"
@@ -330,7 +342,7 @@ class MainActivity : ComponentActivity() {
                                         HorizontalPager(
                                             state = pagerState,
                                             modifier = Modifier.fillMaxSize(),
-                                            beyondViewportPageCount = 1,
+                                            beyondViewportPageCount = 2,
                                             key = { it }
                                         ) { page ->
                                             when (page) {
@@ -384,7 +396,15 @@ class MainActivity : ComponentActivity() {
                                                     modifier = Modifier.fillMaxSize()
                                                 )
 
-                                                1 -> HistoryScreen(
+                                                1 -> StoreScreen(
+                                                    onCreateFolder = viewModel::createFolder,
+                                                    onImportSubject = { subject ->
+                                                        viewModel.importStoreSubject(subject)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+
+                                                2 -> HistoryScreen(
                                                     records = pushHistory,
                                                     onRepush = viewModel::repushRecord,
                                                     onDeleteRequest = viewModel::requestHistoryDelete,
@@ -394,7 +414,7 @@ class MainActivity : ComponentActivity() {
                                                     modifier = Modifier.fillMaxSize()
                                                 )
 
-                                                2 -> SettingsScreen(
+                                                3 -> SettingsScreen(
                                                     appearanceMode = appearanceMode,
                                                     onAppearanceModeChange = viewModel::setAppearanceMode,
                                                     dynamicColor = dynamicColor,

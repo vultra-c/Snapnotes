@@ -1,0 +1,179 @@
+<import name="input-method" src="../../components/InputMethod/InputMethod.ux"></import>
+
+<template>
+  <div class="page" style="flex-direction: column;">
+
+    <!-- 文件夹名输入框预览 -->
+    <div style="position: absolute; left: 12px; top: 86px; width: 312px; height: 56px; background-color: #18181A; border: 1px solid #2A2A2E; border-radius: 28px; padding: 0 24px; flex-direction: row; align-items: center;" @click="toggleKeyboard">
+      <text style="font-size: 28px; font-weight: bold; color: {{ textValue ? 'white' : 'rgba(255,255,255,0.3)' }}; width: 100%; text-overflow: ellipsis; lines: 1;">{{ textValue || '输入文件夹名称...' }}</text>
+    </div>
+
+    <!-- 提示文本 -->
+    <text static style="position: absolute; left: 24px; top: 154px; width: 288px; font-size: 22px; color: rgba(255,255,255,0.4); text-align: center;">点击输入框打开键盘</text>
+
+    <!-- 输入法键盘 -->
+    <input-method
+      hide="{{hideKeyboard}}"
+      keyboardtype="QWERTY"
+      screentype="rect"
+      maxlength="10"
+      vibratemode="{{vibrateMode}}"
+      @complete="onComplete"
+      @delete="onDelete"
+    ></input-method>
+
+    <!-- 顶部栏（参照全局设置和考点阅读页：仅 hd.png 一张渐变遮罩） -->
+    <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
+    <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
+    <img static src="/common/images/conform.png" @click="onConfirm" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />
+    <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>
+    <text static style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center;">新建文件夹</text>
+
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import app from '@system.app'
+import prompt from '@system.prompt'
+import storage from '@system.storage'
+import dataManager from '../../common/utils/dataManager.js'
+import { onTimeChange, offTimeChange } from '../../common/clock.js'
+
+export default {
+  private: {
+    nowTime: '00:00',
+    __unsubClock: null,
+    timeFormat: '24h',
+    textValue: '',
+    hideKeyboard: true,
+    vibrateMode: '',
+    isCreating: false
+  },
+  protected: {
+    parentId: 'bt_root'
+  },
+
+  onInit() {
+    this.loadTimeFormat()
+    this.__unsubClock = onTimeChange((t) => {
+      if (this.$valid) {
+        this.nowTime = this._fmtClock(t)
+      }
+    })
+
+    // parentId 由 protected 属性自动从路由参数接收，默认 bt_root
+    // 获取键盘震动模式
+    if (this.$app.$def && this.$app.$def.getKeyboardVibrateMode) {
+      this.vibrateMode = this.$app.$def.getKeyboardVibrateMode()
+    }
+  },
+
+  _fmtClock(t) {
+    if (this.timeFormat === '12h') {
+      var parts = t.split(':')
+      var h = parseInt(parts[0], 10) || 0
+      var m = parts[1] || '00'
+      var ampm = h >= 12 ? '下午' : '上午'
+      h = h % 12 || 12
+      return ampm + ' ' + h + ':' + m
+    }
+    return t
+  },
+
+  loadTimeFormat() {
+    storage.get({
+      key: 'KD_TIME_FORMAT',
+      success: (data) => {
+        if (!this.$valid) return
+        if (data) {
+          this.timeFormat = data
+        }
+        var now = new Date()
+        var hh = String(now.getHours()).padStart(2, '0')
+        var mm = String(now.getMinutes()).padStart(2, '0')
+        this.nowTime = this._fmtClock(hh + ':' + mm)
+      },
+      fail: () => {
+        if (!this.$valid) return
+        var now = new Date()
+        var hh = String(now.getHours()).padStart(2, '0')
+        var mm = String(now.getMinutes()).padStart(2, '0')
+        this.nowTime = this._fmtClock(hh + ':' + mm)
+      }
+    })
+  },
+
+  onDestroy() {
+    if (this.__unsubClock) {
+      offTimeChange(this.__unsubClock)
+      this.__unsubClock = null
+    }
+  },
+
+  toggleKeyboard() {
+    this.hideKeyboard = !this.hideKeyboard
+  },
+
+  onComplete(e) {
+    if (e && e.detail && e.detail.text) {
+      this.textValue = this.textValue + e.detail.text
+    }
+  },
+
+  onDelete() {
+    if (this.textValue.length > 0) {
+      this.textValue = this.textValue.substring(0, this.textValue.length - 1)
+    }
+  },
+
+  onConfirm() {
+    if (this.isCreating) return
+    var name = this.textValue.trim()
+    if (!name) {
+      prompt.showToast({
+        message: '请输入文件夹名称'
+      })
+      return
+    }
+
+    this.isCreating = true
+    var that = this
+    dataManager.createBluetoothFolder(name, this.parentId).then(function(folderId) {
+      if (folderId) {
+        // 创建成功，返回上一页
+        prompt.showToast({
+          message: '文件夹已创建'
+        })
+        setTimeout(function() {
+          router.back()
+        }, 500)
+      } else {
+        that.isCreating = false
+        prompt.showToast({
+          message: '创建失败'
+        })
+      }
+    }).catch(function(e) {
+      that.isCreating = false
+      console.log('createFolder error: ' + e)
+      prompt.showToast({
+        message: '创建失败'
+      })
+    })
+  },
+
+  goBack() {
+    router.back()
+  },
+
+  onBackPress() {
+    router.back()
+    return true
+  }
+}
+</script>
+
+<style>
+  @import '../../common/style.css';
+</style>

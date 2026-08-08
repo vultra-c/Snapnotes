@@ -195,3 +195,9 @@
   left: 24px;
   bottom: 24px;
 }
+/* 添加按钮：底部中间 */
+.fab--add {
+  left: 132px;
+  bottom: 24px;
+  border-radius: 36px;
+}

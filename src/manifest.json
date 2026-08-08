@@ -80,6 +80,12 @@
       },
       "pages/import": {
         "component": "import"
+      },
+      "pages/addAction": {
+        "component": "addAction"
+      },
+      "pages/createFolder": {
+        "component": "createFolder"
       }
     }
   },

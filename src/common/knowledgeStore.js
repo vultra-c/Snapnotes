@@ -2,11 +2,11 @@
  * 闪念小抄 - 知识点数据中枢（同步接口）
  *
  * 设计：把"读数据"集中到一处，对外只暴露同步接口，4 页改动最小。
- *   - builtin：内置 159 条，来源仍是 ./knowledgeData（本轮不动）
+ *   - builtin：内置知识点已移除（首次安装为零知识点，仅支持手机端导入）
  *   - userSubjects：用户导入数据的缓存（三态：null=未加载 / 已加载的对象）
  *
  * 用户数据由 app.ux onCreate 时 @system.storage.get 异步预读后注入（setUserData）。
- * 页面 onInit 时通常缓存已就绪；极端竞态下用户科目稍后出现，不阻塞内置显示。
+ * 页面 onInit 时通常缓存已就绪；极端竞态下用户科目稍后出现。
  *
  * 用户数据 JSON 结构（与内置同构）：
  *   { "<科目名>": [ { id, title, desc, points, raw?, formulas? }, ... ], ... }

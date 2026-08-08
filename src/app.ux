@@ -169,6 +169,11 @@ export default {
       console.log('dataManager.initData error: ' + e)
     }
 
+    // 1.5) 预热蓝牙元数据缓存（减少首次列表加载的卡顿）
+    try { dataManager.getBluetoothMeta() } catch (e) {
+      console.log('pre-warm bluetooth meta error: ' + e)
+    }
+
     // 2) 读回已持久化的用户知识点数据
     try { this._loadPersistedUserData() } catch (e) {
       console.log('_loadPersistedUserData error: ' + e)

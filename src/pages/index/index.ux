@@ -31,6 +31,8 @@
     <img static src="/common/images/search.png" @click="goSearch" class="fab fab--search" />
     <!-- 左下角 AI 聊天图标 -->
     <img static src="/common/images/chat.png" @click="goChat" class="fab fab--chat" />
+    <!-- 底部中间添加按钮 -->
+    <img static src="/common/images/plus.jpg" @click="goAddAction" class="fab fab--add" />
 
   </div>
 </template>
@@ -132,6 +134,7 @@ export default {
     var items = []
     var that = this
 
+    // 同步加载知识点科目（通常为空，仅手机端导入后才有）
     try {
       var store = this.$app.$def && this.$app.$def.store
       if (store && store.getSubjects) {
@@ -154,6 +157,11 @@ export default {
       console.log('load knowledge subjects error: ' + e)
     }
 
+    // 先显示已有知识点（立即可见，减少白屏时间）
+    this.allItems = items
+    this.visibleItems = items
+
+    // 异步加载文件夹/考点，加载后追加到列表
     dataManager.getTopLevelFolders().then(function(folders) {
       if (folders) {
         folders.forEach(function(folder) {
@@ -167,13 +175,12 @@ export default {
           })
         })
       }
-    }).catch(function(e) {
-      console.log('load folders error: ' + e)
-    }).then(function() {
       if (that.$valid) {
         that.allItems = items
         that.visibleItems = items
       }
+    }).catch(function(e) {
+      console.log('load folders error: ' + e)
     })
   },
 
@@ -246,6 +253,10 @@ export default {
 
   goChat() {
     router.push({ uri: '/pages/chat' })
+  },
+
+  goAddAction() {
+    router.push({ uri: '/pages/addAction', params: { path: 'bt_root' } })
   },
 
   exitApp() {

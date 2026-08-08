@@ -1311,6 +1311,72 @@ export default {
   },
 
   /**
+   * 直接添加一个蓝牙内容节点（用于知识点 JSON 推送到指定文件夹）。
+   * 将内容分块存储到 storage，并在 meta 列表中创建 content 节点。
+   * @param {string} name 内容名称（如科目名或文件名）
+   * @param {string} content 完整内容（JSON 字符串）
+   * @param {string} folderId 目标文件夹 ID
+   * @returns {string} 内容节点 ID
+   */
+  addBluetoothContent(name, content, folderId) {
+    var contentId = 'bt_content_' + Date.now()
+    var folder = folderId || 'bt_root'
+
+    // 分块存储内容
+    var chunks = []
+    if (content && content.length > 0) {
+      for (var i = 0; i < content.length; i += STORAGE_CHUNK_SIZE) {
+        chunks.push(content.substring(i, Math.min(i + STORAGE_CHUNK_SIZE, content.length)))
+      }
+    }
+    if (chunks.length === 0) chunks.push('')
+
+    // 同步写入各分块（storage.set 是异步的，但这里用同步循环发起）
+    for (var j = 0; j < chunks.length; j++) {
+      storage.set({
+        key: STORAGE_KEY_BT_CHUNK_PREFIX + contentId + '_' + j,
+        value: chunks[j],
+        success: function() {},
+        fail: function(e) { console.error('[DM] addBluetoothContent chunk write fail: ' + e) }
+      })
+    }
+    // 写入分块数量标志
+    storage.set({
+      key: STORAGE_KEY_BT_CHUNK_PREFIX + contentId + '_count',
+      value: String(chunks.length),
+      success: function() {},
+      fail: function(e) { console.error('[DM] addBluetoothContent count write fail: ' + e) }
+    })
+
+    // 写入 meta 列表
+    var meta = {
+      id: contentId,
+      name: name,
+      type: 'content',
+      folder: folder,
+      created: Date.now()
+    }
+
+    // 异步更新 meta（不阻塞传输完成流程）
+    getBluetoothMeta().then(function(metaList) {
+      var updated = (metaList || []).concat([meta])
+      saveBluetoothMeta(updated).then(function(ok) {
+        if (ok) {
+          console.log('[DM] Content added: ' + name + ' folder=' + folder + ' id=' + contentId)
+        } else {
+          console.warn('[DM] Content meta save failed (cache only): ' + name)
+        }
+      }).catch(function(e) {
+        console.error('[DM] addBluetoothContent meta save error: ' + e)
+      })
+    }).catch(function(e) {
+      console.error('[DM] addBluetoothContent getMeta error: ' + e)
+    })
+
+    return contentId
+  },
+
+  /**
    * 重命名蓝牙传输节点（仅更新 meta）
    * @param {string} nodeId 节点 ID
    * @param {string} newName 新名称

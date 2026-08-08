@@ -474,6 +474,7 @@ export default {
       totalBytes: 0,
       receivedChunks: 0,
       isReceiving: false,
+      targetFolderId: null,
       formulaSubject: '',
       formulaId: 0,
       formulaW: 0,
@@ -489,8 +490,9 @@ export default {
         this.fileState.totalChunks = (typeof msg.totalChunks === 'number' && msg.totalChunks > 0) ? msg.totalChunks : 0
         this.fileState.fileName = (typeof msg.filename === 'string') ? msg.filename : 'unknown.json'
         this.fileState.totalBytes = (typeof msg.totalBytes === 'number') ? msg.totalBytes : 0
+        this.fileState.targetFolderId = (typeof msg.folderId === 'string' && msg.folderId !== '') ? msg.folderId : null
         this.fileState.isReceiving = true
-        console.log('file transfer start: ' + this.fileState.fileName + ' ' + this.fileState.totalBytes + 'B ' + this.fileState.totalChunks + ' chunks')
+        console.log('file transfer start: ' + this.fileState.fileName + ' ' + this.fileState.totalBytes + 'B ' + this.fileState.totalChunks + ' chunks folder=' + (this.fileState.targetFolderId || 'root'))
         // 通知 push.ux 页面
         this._notifyPush('start', {
           filename: this.fileState.fileName,
@@ -605,6 +607,23 @@ export default {
       ok = persistResult.ok
       if (!ok) reason = 'persist ' + (persistResult.code || 'fail')
       console.log('file transfer completed: ' + fullJson.length + 'B persisted=' + ok)
+
+      // 如果指定了目标文件夹，在文件树中创建内容节点
+      if (ok && st.targetFolderId) {
+        try {
+          const subjectNames = Object.keys(parsed)
+          for (let i = 0; i < subjectNames.length; i++) {
+            const name = subjectNames[i]
+            const list = parsed[name]
+            if (Array.isArray(list) && list.length > 0) {
+              dataManager.addBluetoothContent(name, fullJson, st.targetFolderId)
+            }
+          }
+          console.log('content nodes created in folder: ' + st.targetFolderId)
+        } catch (e2) {
+          console.log('create content nodes fail: ' + e2)
+        }
+      }
     } catch (e) {
       reason = 'parse/merge fail'
       console.log('file transfer finalize fail: ' + e)

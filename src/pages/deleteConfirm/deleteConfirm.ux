@@ -1,28 +1,19 @@
 <template>
   <div class="page" style="flex-direction: column;" @swipe="onSwipe">
 
-    <!-- 顶部栏（完全复刻弦电子书 confirm.ux） -->
+    <!-- 顶部栏 -->
     <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
     <img static src="/common/images/back.png" @click="back" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
-    <img static if="{{action!=='versionError' && action!=='deleteKnowledge'}}" src="/common/images/delete.png" @click="confirmAction" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />
     <text style="position: absolute; left: 78px; top: 7px; width: 180px; line-height: 32px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>
     <text static style="position: absolute; left: 78px; top: 35px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center; lines: 1; text-overflow: ellipsis;">{{pageName}}</text>
 
-    <!-- 中间内容（完全复刻弦电子书 confirm.ux 布局）
-         confirmText 保持简短（一行），避免与 subText 重叠 -->
+    <!-- 中间内容 -->
     <img static src="/common/images/bin.png" style="position: absolute; left: 104px; top: 146px; width: 128px; height: 128px;" />
     <text style="position: absolute; left: 0px; top: 290px; width: 336px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center;">{{confirmText}}</text>
     <text style="position: absolute; left: 0px; top: 352px; width: 336px; line-height: 32px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center; padding: 0 20px;">{{subText}}</text>
 
-    <!-- 知识点科目删除：确认/取消按钮 -->
-    <div if="{{action==='deleteKnowledge'}}" style="position: absolute; left: 0px; top: 400px; width: 336px; flex-direction: row; justify-content: center; align-items: center;">
-      <div @click="confirmAction" style="width: 130px; height: 60px; background-color: #D32F2F; border-radius: 30px; justify-content: center; align-items: center; margin-right: 12px;">
-        <text style="color: white; font-size: 24px; font-weight: bold;">确认删除</text>
-      </div>
-      <div @click="back" style="width: 130px; height: 60px; background-color: #333333; border-radius: 30px; justify-content: center; align-items: center; margin-left: 12px;">
-        <text style="color: white; font-size: 24px; font-weight: bold;">取消</text>
-      </div>
-    </div>
+    <!-- 双击确认区域（参照喵喵电子书：再次点击确认删除） -->
+    <div @click="confirmAction" style="position: absolute; left: 0px; top: 130px; width: 336px; height: 280px;"></div>
 
   </div>
 </template>
@@ -38,7 +29,8 @@ import appState from '../../common/utils/appState.js'
 export default {
   private: {
     nowTime: '00:00',
-    __unsubClock: null
+    __unsubClock: null,
+    confirm: true
   },
   protected: {
     action: '',
@@ -57,13 +49,9 @@ export default {
     })
 
     // 根据 action 设置显示内容
-    // confirmText 保持简短（一行），避免与 subText 重叠
-    // 文件名显示在顶部标题栏 pageName 中
     if (this.action === 'versionError') {
-      // 版本不兼容页面，pageName/confirmText/subText 已由路由参数传入
       return
     } else if (this.action === 'deleteKnowledge') {
-      // 知识点科目删除：顶部标题显示科目名
       this.pageName = this.name || '删除科目'
       this.confirmText = '确认删除吗？'
       this.subText = '删除后不可恢复'
@@ -80,6 +68,10 @@ export default {
       this.confirmText = '确认删除吗？'
       this.subText = '删除后不可恢复'
     }
+  },
+
+  onShow() {
+    this.confirm = true
   },
 
   onDestroy() {
@@ -100,8 +92,19 @@ export default {
     if (this.action === 'versionError') {
       return app.terminate()
     }
+
+    // 喵喵电子书风格：双击确认——第一次点击提示，第二次点击执行
+    if (this.confirm) {
+      this.confirm = false
+      prompt.showToast({
+        message: '再次点击确认删除',
+        duration: 1000
+      })
+      return
+    }
+
+    // 第二次点击：执行删除
     if (this.action === 'deleteKnowledge') {
-      // 知识点科目删除：调用 app.ux 删除导入科目
       var result = this.$app.$def.removeImportedSubject(this.name)
       if (!this.$valid) return
       if (result && result.ok) {
@@ -111,30 +114,30 @@ export default {
       }
       router.back()
     } else if (this.action === 'deleteAll') {
-      dataManager.deleteAll().then(() => {
+      dataManager.deleteAll().then(function() {
         if (!this.$valid) return
         dataManager.invalidateCache()
         appState.needRefreshList = true
         prompt.showToast({ message: '已删除所有考点', duration: 1500 })
         router.back()
-      })
+      }.bind(this))
     } else if (this.action === 'deleteFolder') {
-      dataManager.deleteFolder(this.path).then(() => {
+      dataManager.deleteFolder(this.path).then(function() {
         if (!this.$valid) return
         dataManager.invalidateCache()
         appState.needRefreshList = true
         prompt.showToast({ message: '已删除文件夹', duration: 1000 })
         router.back()
-      })
+      }.bind(this))
     } else if (this.action === 'deleteContent') {
-      dataManager.deleteContent(this.path).then(() => {
+      dataManager.deleteContent(this.path).then(function() {
         if (!this.$valid) return
         dataManager.invalidateCache()
         appState.needRefreshList = true
         prompt.showToast({ message: '删除成功', duration: 1000 })
         appState.refreshReader = true
         router.back()
-      })
+      }.bind(this))
     }
   },
 

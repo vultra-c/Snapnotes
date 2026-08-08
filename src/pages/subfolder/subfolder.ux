@@ -14,7 +14,7 @@
 
     <!-- 文件夹/考点列表 -->
     <list class="list" if="{{visibleItems.length > 0}}" id="subList" @scrollbottom="loadMore">
-      <list-item for="{{visibleItems}}" tid="id" class="item" type="item" @click="onItemClick($item)" @longpress="onLongPress($item)" @touchstart="onTouchStart" @touchmove="onTouchMove">
+      <list-item for="{{visibleItems}}" tid="id" class="item" type="item" @click="onItemClick($item)" @longpress="onLongPress($item)">
         <div class="item-content">
           <text class="itemtext">{{$item.name}}</text>
           <text class="itemtext2">{{$item.subtitle}}</text>
@@ -27,9 +27,8 @@
       </list-item>
     </list>
 
-    <!-- 遮罩层 -->
-    <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0; width: 336px; height: 86px;" />
-    <!-- 顶部按钮 -->
+    <!-- 顶部栏（参照考点阅读器） -->
+    <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
     <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
     <img static src="/common/images/more.png" @click="goSettings" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />
     <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>
@@ -54,10 +53,6 @@ export default {
     visibleItems: [],
     isNavigating: false,
     longPressTriggered: false,
-    // 滑动误触防护
-    touchStartX: 0,
-    touchStartY: 0,
-    touchMoved: false,
     // 知识点分片加载
     ready: true,
     totalCount: 0
@@ -122,7 +117,6 @@ export default {
   onShow() {
     this.isNavigating = false
     this.longPressTriggered = false
-    this.touchMoved = false
     this.loadData()
   },
 
@@ -242,38 +236,12 @@ export default {
     this._loadMoreChunk()
   },
 
-  // 触摸事件：滑动误触防护
-  onTouchStart(e) {
-    var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
-    if (t) {
-      this.touchStartX = t.clientX
-      this.touchStartY = t.clientY
-      this.touchMoved = false
-    }
-  },
-
-  onTouchMove(e) {
-    var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
-    if (t) {
-      var dx = Math.abs(t.clientX - this.touchStartX)
-      var dy = Math.abs(t.clientY - this.touchStartY)
-      if (dx > 10 || dy > 10) {
-        this.touchMoved = true
-      }
-    }
-  },
-
   // 点击列表项 → 进入内容
   onItemClick(item) {
     if (this.isNavigating) return
     // 长按后阻止点击事件
     if (this.longPressTriggered) {
       this.longPressTriggered = false
-      return
-    }
-    // 滑动误触防护
-    if (this.touchMoved) {
-      this.touchMoved = false
       return
     }
     if (!item) return

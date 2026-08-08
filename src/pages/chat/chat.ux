@@ -1,0 +1,385 @@
+<import name="input-method" src="../../components/InputMethod/InputMethod.ux"></import>
+
+<template>
+  <div class="container">
+
+    <!-- 对话区:绝对定位填 标题下 ~ 输入条上 的区域;键盘弹起时输入条上移,
+         scroll 底部边界随之抬高(避开绝对定位贴底、不参与文档流抢占)。 -->
+    <scroll class="box {{ !hideKeyboard ? 'box--with-keyboard' : '' }}" scroll-x="false" scroll-y="true" bounces="true">
+      <!-- 加载中占位(首帧先就位,同 search/detail/knowledge 范式,进页顺滑) -->
+      <div class="chat-loading" if="{{!ready}}">
+        <text class="chat-loading__text" static>加载中...</text>
+      </div>
+
+      <!-- 空态:未发过消息 → Amadeus 启动图 + 欢迎语;未连手机端 → 提示 -->
+      <div class="chat-empty" if="{{ready && messages.length === 0}}">
+        <img class="chat-empty__logo" src="/common/images/amadeus_logo.png" static />
+        <text class="chat-empty__hello" static>{{ connectHint }}</text>
+      </div>
+
+      <!-- 消息列表(user 右、ai 左、system 居中弱提示),整体替换赋值触发绑定 -->
+      <div class="chat-row chat-row--{{$item.role}}" if="{{ready}}" for="{{messages}}">
+        <div class="chat-bubble chat-bubble--{{$item.role}}">
+          <text class="chat-bubble__text chat-bubble__text--{{$item.role}}">{{ $item.text }}</text>
+        </div>
+      </div>
+
+      <!-- 「Amadeus 正在回答…」指示 -->
+      <div class="chat-row chat-row--pending" if="{{ready && receiving}}">
+        <div class="chat-bubble chat-bubble--pending">
+          <text class="chat-bubble__text" static>Amadeus 正在回答…</text>
+        </div>
+      </div>
+
+      <div class="padding"></div>
+    </scroll>
+
+    <!-- 底部输入条:绝对定位贴底。键盘 rect 屏高 255px 且自身 position:absolute 贴底,
+         弹起时把输入条 bottom 抬到 255px(键盘顶之上)避免被盖、保持可见可点;
+         平时 bottom:0。点输入框区 toggle 呼/收键盘。 -->
+    <div class="chat-input-bar {{ !hideKeyboard ? 'chat-input-bar--with-keyboard' : '' }}">
+      <div class="chat-input-bar__inner" @click="toggleKeyboard">
+        <text class="chat-input-bar__text">{{ inputText || '输入…' }}</text>
+      </div>
+      <div class="chat-input-bar__send" @click="sendMessage">
+        <text class="chat-input-bar__send-text" static>发送</text>
+      </div>
+    </div>
+
+    <!-- 输入法键盘:组件自带 position:absolute;bottom:0。 -->
+    <input-method
+      hide="{{hideKeyboard}}"
+      keyboardtype="QWERTY"
+      screentype="rect"
+      maxlength="5"
+      vibratemode="{{vibrateMode}}"
+      @complete="onComplete"
+      @delete="onDelete"
+      @visibilityChange="onKeyboardVisibilityChange"
+    />
+
+    <!-- 顶部遮罩（常驻显示，仅过渡作用） -->
+    <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
+
+    <!-- 返回按钮（层级在遮罩上方） -->
+    <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
+
+    <!-- 时间 -->
+    <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{ currentTime }}</text>
+
+    <!-- 标题 -->
+    <text static style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center;">Amadeus</text>
+
+    <!-- 新对话按钮（右上，与主页 more 按钮同位） -->
+    <text @click="newChat" static style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px; line-height: 72px; color: #7899BB; font-size: 26px; font-weight: bold; text-align: center;">新</text>
+
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import { onTimeChange, offTimeChange } from '../../common/clock'
+
+export default {
+  private: {
+    currentTime: "00:00",
+    messages: [],          // [{role:'user'|'ai'|'system', text}] 整体替换赋值保证绑定
+    inputText: '',
+    hideKeyboard: true,
+    receiving: false,      // 「Amadeus 正在回答…」态
+    connectHint: '',       // 空态副文案:未连手机端 / 连了的欢迎语
+    ready: false,
+    vibrateMode: ''        // 键盘震动模式(''/short/long),同步 $def 全局设置传给 InputMethod
+  },
+
+  onInit() {
+    this.__unsubClock = onTimeChange((t) => { this.currentTime = t })
+    // 震动模式:读 $def 缓存(app 启动已从 storage 读回),直接绑 InputMethod.vibratemode
+    this.vibrateMode = this.$app.$def.getKeyboardVibrateMode()
+    // ready=false 让 scroll 内只画「加载中」占位,把 onChat 订阅/interconnect 判定推到下一帧,
+    // 标题/时钟/输入条先就位,进页顺滑(同 search/detail/knowledge 范式)。
+    setTimeout(() => {
+      // 空态文案:interconnect 不可用就提示未连,能连就欢迎语
+      const connected = !!this.$app.$def.interconnect
+      this.connectHint = connected ? '我是 Amadeus,问我点什么' : '未连接手机端,无法对话'
+      // 订阅 chat 事件:回复开始/完成/错误/超时/新会话。app.ux 单例广播,本页据此更新 messages/receiving
+      this.__unsubChat = this.$app.$def.onChat((evt) => {
+        if (!evt) return
+        if (evt.kind === 'reply_start') {
+          this.receiving = true
+        } else if (evt.kind === 'reply_end') {
+          // 收齐一次性入 ai 气泡(不逐片渐进,避免抖动)
+          this.receiving = false
+          if (evt.fullText) {
+            this._pushMessage('ai', evt.fullText)
+          }
+        } else if (evt.kind === 'reply_error') {
+          this.receiving = false
+          this._pushMessage('system', '出错:' + evt.message)
+        } else if (evt.kind === 'timeout') {
+          this.receiving = false
+          this._pushMessage('system', '手机端未响应(15s 超时)')
+        } else if (evt.kind === 'new_session') {
+          // 新会话确认:本地 sessionId 已由 startNewChatSession 设好,此处无需动作
+        }
+      })
+      this.ready = true
+    }, 50)
+  },
+
+  onDestroy() {
+    if (this.__unsubClock) {
+      offTimeChange(this.__unsubClock)
+    }
+    if (this.__unsubChat) {
+      this.__unsubChat()
+    }
+  },
+
+  goBack() {
+    router.back()
+  },
+
+  toggleKeyboard() {
+    this.hideKeyboard = !this.hideKeyboard
+  },
+
+  // 键盘组件 hide prop 切换时反向 emit visibilityChange(参考工程 com.bandbbs.ebook search 同款闭环)。
+  // 收到 visible=false 即键盘已内部关闭,同步本页 hideKeyboard=true 保持状态一致。
+  // 这条闭环让"收回"不依赖点输入框 toggle——任何使键盘内 hide 变化的路径都能同步本页状态。
+  onKeyboardVisibilityChange(evt) {
+    if (evt && evt.detail && evt.detail.visible === false) {
+      this.hideKeyboard = true
+    }
+  },
+
+  onComplete(evt) {
+    const ch = evt.detail.content || ''
+    this.inputText += ch
+  },
+
+  onDelete() {
+    if (this.inputText.length > 0) {
+      this.inputText = this.inputText.slice(0, -1)
+    }
+  },
+
+  sendMessage() {
+    const text = this.inputText.trim()
+    if (!text) {
+      prompt.showToast({ message: '请输入内容', duration: 800 })
+      return
+    }
+    if (!this.$app.$def.interconnect) {
+      prompt.showToast({ message: '未连接手机端', duration: 1500 })
+      return
+    }
+    // 用户气泡入列(整体替换赋值),清空输入,置「回答中」并发给手机端
+    this._pushMessage('user', text)
+    this.inputText = ''
+    this.receiving = true
+    this.$app.$def.sendChatMessage(text)
+  },
+
+  // 新对话:清本地消息并通知手机端清该 session 历史
+  newChat() {
+    this.messages = []
+    this.receiving = false
+    this.$app.$def.startNewChatSession()
+    prompt.showToast({ message: '已开新对话', duration: 800 })
+  },
+
+  // 整体替换数组赋值(Vela 数据绑定可靠触发,比 push 稳;与 import.ux log() 同范式)
+  _pushMessage(role, text) {
+    this.messages = this.messages.concat([{ role: role, text: text }])
+  }
+}
+</script>
+
+<style>
+@import '../../common/style.css';
+
+.container {
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  background-color: #0A0A0C;
+  height: 100%;
+  width: 100%;
+  position: relative;    /* 供键盘 / 输入条 / 对话区绝对定位锚定 */
+}
+
+/* 对话区:绝对定位填 标题下方 ~ 输入条上方。 */
+.box {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 102px;        /* 顶部遮罩 hd.png 高度 */
+  bottom: 80px;     /* 留底部输入条 72 + 间距 8 */
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 键盘弹起:scroll 底边界上抬到 输入条之上(输入条此时在键盘顶上方),
+   bottom = 键盘276 + 输入条区72 + 间距8 = 356 */
+.box--with-keyboard {
+  bottom: 356px;
+}
+
+.padding {
+  height: 90px;
+}
+
+/* 进页加载占位(同 search/detail/knowledge 范式) */
+.chat-loading {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  width: 100%;
+}
+
+.chat-loading__text {
+  color: #98989E;
+  font-size: 24px;
+}
+
+/* ---------- 空态:Amadeus 启动图 + 欢迎语 ---------- */
+.chat-empty {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 40px 0;
+}
+
+.chat-empty__logo {
+  width: 220px;
+  height: 220px;
+  margin-bottom: 16px;
+}
+
+.chat-empty__hello {
+  color: #98989E;
+  font-size: 22px;
+  text-align: center;
+}
+
+/* ---------- 消息行 ---------- */
+.chat-row {
+  flex-direction: row;
+  width: 100%;
+  padding: 0 12px;
+  margin-bottom: 10px;
+}
+
+/* user 消息靠右 */
+.chat-row--user {
+  justify-content: flex-end;
+}
+
+/* ai / system / pending 消息靠左 */
+.chat-row--ai,
+.chat-row--system,
+.chat-row--pending {
+  justify-content: flex-start;
+}
+
+.chat-bubble {
+  background-color: #18181A;
+  border: 1px solid #2A2A2E;
+  border-radius: 20px;
+  padding: 12px 18px;
+  max-width: 80%;
+  flex-direction: column;
+}
+
+/* 用户气泡:淡蓝描边 */
+.chat-bubble--user {
+  background-color: rgba(120, 153, 187, 0.16);
+  border-color: rgba(120, 153, 187, 0.4);
+}
+
+/* system 气泡:弱化居中(行已靠左,这里降色当提示) */
+.chat-bubble--system {
+  background-color: transparent;
+  border-color: rgba(229, 115, 115, 0.3);
+}
+
+/* pending 气泡:与 ai 同款但更暗 */
+.chat-bubble--pending {
+  opacity: 0.6;
+}
+
+.chat-bubble__text {
+  color: #FFFFFF;
+  font-size: 26px;
+  line-height: 34px;
+}
+
+/* system 气泡文字弱化为红提示(不靠后代选择器,Vela 不支持) */
+.chat-bubble__text--system {
+  color: #E57373;
+  font-size: 22px;
+}
+
+/* 底部输入条:绝对定位贴底(平时 bottom:8px;键盘弹起时 bottom:284px 顶到键盘顶上方)。
+   参考工程 com.bandbbs.ebook 的布局哲学:关键 UI 块用绝对定位,不参与 flex 抢空间,
+   避免键盘(position:absolute 贴底)盖住文档流元素的坑。 */
+.chat-input-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  width: 100%;
+  flex-direction: row;
+  align-items: center;
+  padding: 8px 12px;
+  height: 72px;
+  box-sizing: border-box;
+}
+
+/* 键盘弹起:输入条从底部抬到键盘顶上方(键盘高 276 + 间距 8 = 284) */
+.chat-input-bar--with-keyboard {
+  bottom: 284px;
+}
+
+.chat-input-bar__inner {
+  flex: 1;
+  height: 56px;
+  background-color: #18181A;
+  border: 1px solid #2A2A2E;
+  border-radius: 28px;
+  padding: 0 24px;
+  flex-direction: row;
+  align-items: center;
+  margin-right: 10px;
+}
+
+.chat-input-bar__text {
+  flex: 1;
+  font-size: 24px;
+  color: #FFFFFF;
+  line-height: 56px;
+}
+
+.chat-input-bar__send {
+  height: 56px;
+  background-color: rgba(120, 153, 187, 0.2);
+  border: 1px solid rgba(120, 153, 187, 0.5);
+  border-radius: 28px;
+  padding: 0 22px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.chat-input-bar__send-text {
+  color: #7899BB;
+  font-size: 26px;
+  font-weight: bold;
+}
+</style>

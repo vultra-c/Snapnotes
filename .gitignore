@@ -1,0 +1,27 @@
+# Vela app
+node_modules/
+build/
+dist/
+.temp_*/
+.DS_Store
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+android/.idea/
+android-app/.gradle/
+android-app/build/
+android-app/app/build/
+android-app/local.properties
+android-app/captures/
+android-app/.idea/
+android-app/debug.keystore
+
+# ⚠️ 签名文件 - 严禁提交到仓库！CI通过Secrets还原
+*.jks
+*.keystore
+keystore.properties
+sign/

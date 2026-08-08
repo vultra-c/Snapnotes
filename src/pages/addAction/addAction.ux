@@ -1,0 +1,146 @@
+<template>
+  <div class="page" style="flex-direction: column;" @swipe="onSwipe">
+
+    <!-- 操作列表（使用静态布局，禁止上下滑动） -->
+    <div class="action-list">
+      <div class="item" @click="onCreateFolder">
+        <div class="item-content">
+          <text class="itemtext">新建文件夹</text>
+          <text class="itemtext2">在当前目录创建</text>
+        </div>
+        <img static src="/common/images/enter.png" class="arrow" />
+      </div>
+      <div class="item" @click="onUploadContent">
+        <div class="item-content">
+          <text class="itemtext">上传考点</text>
+          <text class="itemtext2">从手机端接收</text>
+        </div>
+        <img static src="/common/images/enter.png" class="arrow" />
+      </div>
+    </div>
+
+    <!-- 顶部栏（参照全局设置和考点阅读页：仅 hd.png 一张渐变遮罩） -->
+    <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
+    <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
+    <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>
+    <text static style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center;">添加</text>
+
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import app from '@system.app'
+import storage from '@system.storage'
+import { onTimeChange, offTimeChange } from '../../common/clock.js'
+
+export default {
+  private: {
+    nowTime: '00:00',
+    __unsubClock: null,
+    timeFormat: '24h',
+    parentId: 'bt_root'
+  },
+  protected: {
+    path: ''
+  },
+
+  onInit() {
+    this.loadTimeFormat()
+    this.__unsubClock = onTimeChange((t) => {
+      if (this.$valid) {
+        this.nowTime = this._fmtClock(t)
+      }
+    })
+
+    // 从参数获取父文件夹 ID
+    if (this.path) {
+      this.parentId = this.path
+    }
+  },
+
+  _fmtClock(t) {
+    if (this.timeFormat === '12h') {
+      var parts = t.split(':')
+      var h = parseInt(parts[0], 10) || 0
+      var m = parts[1] || '00'
+      var ampm = h >= 12 ? '下午' : '上午'
+      h = h % 12 || 12
+      return ampm + ' ' + h + ':' + m
+    }
+    return t
+  },
+
+  loadTimeFormat() {
+    storage.get({
+      key: 'KD_TIME_FORMAT',
+      success: (data) => {
+        if (!this.$valid) return
+        if (data) {
+          this.timeFormat = data
+        }
+        var now = new Date()
+        var hh = String(now.getHours()).padStart(2, '0')
+        var mm = String(now.getMinutes()).padStart(2, '0')
+        this.nowTime = this._fmtClock(hh + ':' + mm)
+      },
+      fail: () => {
+        if (!this.$valid) return
+        var now = new Date()
+        var hh = String(now.getHours()).padStart(2, '0')
+        var mm = String(now.getMinutes()).padStart(2, '0')
+        this.nowTime = this._fmtClock(hh + ':' + mm)
+      }
+    })
+  },
+
+  onDestroy() {
+    if (this.__unsubClock) {
+      offTimeChange(this.__unsubClock)
+      this.__unsubClock = null
+    }
+  },
+
+  onCreateFolder() {
+    router.push({
+      uri: '/pages/createFolder',
+      params: { parentId: this.parentId }
+    })
+  },
+
+  onUploadContent() {
+    router.push({ uri: '/pages/push' })
+  },
+
+  goBack() {
+    router.back()
+  },
+
+  onSwipe(e) {
+    if (e.direction === 'right') {
+      router.back()
+    }
+  },
+
+  onBackPress() {
+    router.back()
+    return true
+  }
+}
+</script>
+
+<style>
+  @import '../../common/style.css';
+  .action-list {
+    position: absolute;
+    top: 102px;
+    left: 0px;
+    width: 336px;
+    padding: 0 6px;
+    flex-direction: column;
+  }
+  .list-padding {
+    height: 90px;
+    width: 100%;
+  }
+</style>

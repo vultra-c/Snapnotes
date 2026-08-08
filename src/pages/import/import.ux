@@ -1,0 +1,625 @@
+<template>
+  <div class="page" style="flex-direction: column;">
+
+    <!-- 滚动容器 -->
+    <scroll class="box" scroll-x="false" scroll-y="true" bounces="true">
+
+      <!-- 接收状态卡（合并原 push.ux 功能） -->
+      <div class="imp-item">
+        <div class="imp-card imp-card--push">
+          <!-- 等待连接 -->
+          <div if="{{pushState == 'wait'}}" style="flex-direction: column; align-items: center; width: 100%;">
+            <img static src="/common/images/connect.png" style="width: 64px; height: 64px; margin-bottom: 12px;" />
+            <text class="imp-push-title">等待连接</text>
+            <text class="imp-push-hint">请在手机端打开《闪念小抄》并连接手环</text>
+          </div>
+          <!-- 已连接 -->
+          <div if="{{pushState == 'ready'}}" style="flex-direction: column; align-items: center; width: 100%;">
+            <img static src="/common/images/choose.png" style="width: 64px; height: 64px; margin-bottom: 12px;" />
+            <text class="imp-push-title">连接成功</text>
+            <text class="imp-push-hint">请在手机端选择考点文件并发送</text>
+          </div>
+          <!-- 接收中 -->
+          <div if="{{pushState == 'receiving'}}" style="flex-direction: column; width: 100%;">
+            <div style="flex-direction: row; align-items: center; margin-bottom: 12px;">
+              <img static src="/common/images/download.png" style="width: 40px; height: 40px; margin-right: 10px;" />
+              <text class="imp-push-title">正在接收</text>
+              <text style="color: rgb(100,181,246); font-size: 22px; font-weight: bold; margin-left: auto;">{{pushPercent}}%</text>
+            </div>
+            <text style="color: rgba(255,255,255,0.8); font-size: 22px; font-weight: bold; lines: 1; text-overflow: ellipsis; margin-bottom: 8px;">{{pushFileName}}</text>
+            <progress percent="{{pushPercent}}" style="width: 100%; height: 6px; color: #1976D2;" />
+            <text if="{{pushTransferRate}}" style="font-size: 18px; color: rgba(153,153,153,1); margin-top: 6px; text-align: center; width: 100%;">{{pushTransferRate}}</text>
+          </div>
+          <!-- 接收成功 -->
+          <div if="{{pushState == 'saved'}}" style="flex-direction: column; align-items: center; width: 100%;">
+            <img static src="/common/images/succ.png" style="width: 64px; height: 64px; margin-bottom: 12px;" />
+            <text class="imp-push-title">接收成功</text>
+            <text style="color: rgb(100,181,246); font-size: 22px; font-weight: bold; text-align: center; margin-top: 4px;">{{pushFileName}}</text>
+            <text class="imp-push-hint">已保存到 {{savedFolder}}</text>
+          </div>
+          <!-- 接收失败 -->
+          <div if="{{pushState == 'error'}}" style="flex-direction: column; align-items: center; width: 100%;">
+            <img static src="/common/images/error.png" style="width: 64px; height: 64px; margin-bottom: 12px;" />
+            <text class="imp-push-title">接收失败</text>
+            <text class="imp-push-hint">{{pushErrorMsg}}</text>
+          </div>
+        </div>
+      </div>
+
+      <!-- 监听状态卡 -->
+      <div class="imp-item">
+        <div class="imp-card imp-card--status">
+          <div class="imp-status-row">
+            <text class="imp-status-dot {{ listening ? 'imp-status-dot--on' : 'imp-status-dot--off' }}" static>●</text>
+            <text class="imp-status-text">{{ listening ? '正在监听手机端推送' : '未监听手机端' }}</text>
+          </div>
+          <text class="imp-status-hint" static>{{ featureHint }}</text>
+        </div>
+      </div>
+
+      <!-- 已导入科目 -->
+      <div class="imp-item" if="{{importedSubjects.length}}">
+        <div class="imp-card imp-card--manager">
+          <text class="imp-section-title" static>已导入科目</text>
+          <div class="imp-subject-row" for="{{importedSubjects}}">
+            <div class="imp-subject-row__main" @click="onSubjectRowTap($idx)">
+              <text class="imp-subject-name">{{ $item.name }}</text>
+              <text class="imp-subject-count" static>{{ $item.count }} 条</text>
+            </div>
+            <text class="imp-subject-del {{ $item.confirming ? 'imp-subject-del--confirm' : '' }}"
+              @click="onSubjectDelete($idx)"
+              static>
+              {{ $item.confirming ? '确认删除?' : '删除' }}
+            </text>
+          </div>
+          <text class="imp-section-hint" static>点击「删除」进入确认，4 秒内再点确认才真正删除</text>
+        </div>
+      </div>
+
+      <!-- 事件日志 -->
+      <div class="imp-log-block">
+        <text class="imp-log-title" static>事件日志</text>
+        <div class="imp-log-line" for="{{logs}}">
+          <text class="imp-log-text">{{ $item }}</text>
+        </div>
+        <text class="imp-log-empty" if="{{ !logs.length }}" static>暂无事件</text>
+      </div>
+
+      <!-- 底部占位 -->
+      <div class="padding"></div>
+    </scroll>
+
+    <!-- 顶部遮罩 -->
+    <img static src="/common/images/hd.png" style="position: absolute; top: 0; left: 0; width: 336px; height: 102px;" />
+
+    <!-- 顶部栏 -->
+    <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
+    <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{ currentTime }}</text>
+    <text static style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center;">知识点管理</text>
+
+  </div>
+</template>
+
+<script>
+import app from '@system.app'
+import router from '@system.router'
+import prompt from '@system.prompt'
+import vibrator from '@system.vibrator'
+import { onTimeChange, offTimeChange } from '../../common/clock'
+
+// 复用 extras/sample 作为本地自验假数据
+import samplePkg from '../../common/extras/sample'
+
+export default {
+  private: {
+    currentTime: "00:00",
+    listening: false,
+    featureHint: '',
+    logs: [],
+    importedSubjects: [],
+    __confirmTimer: null,
+    // push 状态（合并自 push.ux）
+    pushState: 'wait',
+    pushPercent: 0,
+    pushFileName: '',
+    pushErrorMsg: '',
+    pushTransferRate: '',
+    savedFolder: '主页',
+    autoReturnTimer: null,
+    lastProgress: 0,
+    lastRateTime: 0,
+    lastReceived: 0,
+    totalChars: 0
+  },
+
+  onInit() {
+    this.__unsubClock = onTimeChange((t) => {
+      if (this.$valid) {
+        this.currentTime = this._fmtClock(t)
+      }
+    })
+    this._probeFeature()
+    this._attachReceiveLog()
+    this._setupPushCallback()
+    this._refreshImported()
+  },
+
+  onShow() {
+    if (!this.$valid) return
+    // 刷新连接状态
+    var conn = this.$app.$def.getConn ? this.$app.$def.getConn() : null
+    if (conn && conn.connected) {
+      if (this.pushState === 'wait') {
+        this.pushState = 'ready'
+      }
+    } else {
+      if (this.pushState !== 'receiving' && this.pushState !== 'saved' && this.pushState !== 'error') {
+        this.pushState = 'wait'
+      }
+    }
+    // 刷新已导入列表
+    this._refreshImported()
+  },
+
+  onDestroy() {
+    if (this.__unsubClock) {
+      offTimeChange(this.__unsubClock)
+    }
+    if (this.__unsubReceive) {
+      this.__unsubReceive()
+    }
+    if (this.autoReturnTimer) {
+      clearTimeout(this.autoReturnTimer)
+      this.autoReturnTimer = null
+    }
+    // 清除 push 回调
+    var cf = this.$app.$def.getConnfile ? this.$app.$def.getConnfile() : null
+    if (cf) {
+      cf.setCallback(function() {})
+    }
+  },
+
+  _fmtClock(t) {
+    var parts = t.split(':')
+    var h = parseInt(parts[0], 10) || 0
+    var m = parts[1] || '00'
+    return h + ':' + m
+  },
+
+  goBack() {
+    router.back()
+  },
+
+  log(s) {
+    var next = this.logs.concat([s])
+    if (next.length > 30) {
+      next.splice(0, next.length - 30)
+    }
+    this.logs = next
+  },
+
+  _probeFeature() {
+    var canIc = app.canIUse('@system.interconnect')
+    var canFile = app.canIUse('@system.file')
+    if (canIc && canFile) {
+      this.featureHint = '手机端配套 app 发送知识点 JSON 后自动接收并入'
+    } else if (canIc && !canFile) {
+      this.featureHint = '可接收推送但无法落盘(重启丢失)，仅内存态'
+    } else {
+      this.featureHint = '本机不支持 interconnect，仅可本地自验导入'
+    }
+    this.listening = !!this.$app.$def.interconnect
+  },
+
+  _attachReceiveLog() {
+    var that = this
+    this.__unsubReceive = this.$app.$def.onReceive(function(evt) {
+      if (!evt) return
+      if (!that.$valid) return
+      if (evt.kind === 'imported') {
+        var ps = evt.persisted ? '已落盘' : '未落盘 code=' + (evt.persistCode || '')
+        that.log('收到并入 len=' + evt.len + ' 字符，' + ps)
+      } else if (evt.kind === 'empty') {
+        that.log('收到空消息')
+      } else if (evt.kind === 'userdata-changed') {
+        that._refreshImported()
+      }
+    })
+    if (this.$app.$def.interconnect) {
+      this.log('已挂接收监听，等待手机端推送…')
+    }
+  },
+
+  // ====== Push 回调（合并自 push.ux） ======
+  _setupPushCallback() {
+    var that = this
+    var connfile = this.$app.$def.getConnfile ? this.$app.$def.getConnfile() : null
+    if (connfile) {
+      connfile.setCallback(function(data) {
+        if (!that.$valid) return
+        switch (data.msg) {
+          case 'start':
+            that.pushState = 'receiving'
+            that.pushFileName = data.filename || ''
+            that.pushPercent = 0
+            that.pushTransferRate = ''
+            that.lastProgress = 0
+            that.lastReceived = 0
+            that.lastRateTime = Date.now()
+            that.totalChars = (data.totalChars ? parseInt(data.totalChars) : (data.wordCount ? parseInt(data.wordCount) : 0))
+            break
+          case 'next':
+            that.pushState = 'receiving'
+            that.pushFileName = data.filename || that.pushFileName
+            that._updateTransferRate(data.progress || 0, data.received)
+            that.pushPercent = Math.floor((data.progress || 0) * 100)
+            break
+          case 'success':
+            that.pushState = 'saved'
+            that._vibrate(100)
+            var cf = that.$app.$def.getConnfile ? that.$app.$def.getConnfile() : null
+            if (cf && cf.targetFolder) {
+              var tf = cf.targetFolder
+              if (tf === 'bt_root' || !tf) {
+                that.savedFolder = '主页'
+              } else if (tf.indexOf('bt_folder_') === 0) {
+                that.savedFolder = '文件夹'
+              } else {
+                that.savedFolder = tf
+              }
+            }
+            that._refreshImported()
+            if (that.autoReturnTimer) clearTimeout(that.autoReturnTimer)
+            that.autoReturnTimer = setTimeout(function() {
+              if (!that.$valid) return
+              that.pushState = 'ready'
+            }, 2000)
+            break
+          case 'cancel':
+            that.pushState = 'ready'
+            break
+          case 'error':
+            that.pushState = 'error'
+            that.pushErrorMsg = data.error || '未知错误'
+            that._vibrate([50, 50, 50])
+            if (that.autoReturnTimer) {
+              clearTimeout(that.autoReturnTimer)
+              that.autoReturnTimer = null
+            }
+            break
+        }
+      })
+    }
+
+    // 检查当前连接状态
+    var conn = this.$app.$def.getConn ? this.$app.$def.getConn() : null
+    if (conn && conn.connected) {
+      this.pushState = 'ready'
+    } else {
+      this.pushState = 'wait'
+    }
+  },
+
+  _updateTransferRate(progress, received) {
+    var now = Date.now()
+    var receivedChars = 0
+    if (received != null) {
+      receivedChars = parseInt(received) || 0
+    } else if (this.totalChars > 0) {
+      receivedChars = Math.round(progress * this.totalChars)
+    }
+
+    if (this.lastRateTime > 0 && now > this.lastRateTime) {
+      var dt = (now - this.lastRateTime) / 1000
+      if (dt > 0) {
+        var delta = 0
+        if (receivedChars > 0 || this.lastReceived > 0) {
+          delta = receivedChars - this.lastReceived
+        } else if (this.totalChars > 0) {
+          delta = Math.round((progress - this.lastProgress) * this.totalChars)
+        }
+        if (delta > 0) {
+          var rate = Math.round(delta / dt)
+          if (rate > 0) {
+            this.pushTransferRate = rate + ' 字/秒'
+          }
+        }
+      }
+    }
+    this.lastProgress = progress
+    this.lastRateTime = now
+    this.lastReceived = receivedChars
+  },
+
+  _vibrate(duration) {
+    try {
+      vibrator.vibrate({ duration: duration })
+    } catch (e) {
+      // 振动不可用时忽略
+    }
+  },
+
+  importSample() {
+    prompt.showToast({ message: '导入中...', duration: 800 })
+    try {
+      var jsonStr = JSON.stringify(samplePkg)
+      var r = this.$app.$def.receiveImportedJSON(jsonStr)
+      if (r.ok) {
+        this.log('自验导入成功 len=' + r.len + (r.persisted ? ' 已落盘' : ' 未落盘'))
+        prompt.showToast({ message: '已导入「拓展物理」', duration: 1500 })
+      } else {
+        this.log('自验导入失败 reason=' + r.reason)
+        prompt.showToast({ message: '导入失败：' + r.reason, duration: 1500 })
+      }
+    } catch (e) {
+      this.log('自验导入异常 ' + e)
+      prompt.showToast({ message: '导入异常', duration: 1500 })
+    }
+  },
+
+  _refreshImported() {
+    var all = this.$app.$def.store.getSubjects()
+    var next = []
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].imported) {
+        next.push({ name: all[i].name, count: all[i].count, confirming: false })
+      }
+    }
+    this.importedSubjects = next
+  },
+
+  onSubjectRowTap(_idx) {
+    void _idx
+  },
+
+  onSubjectDelete(idx) {
+    if (idx < 0 || idx >= this.importedSubjects.length) return
+    var wasConfirming = this.importedSubjects[idx].confirming
+    var itemName = this.importedSubjects[idx].name
+    if (this.__confirmTimer) { clearTimeout(this.__confirmTimer); this.__confirmTimer = null }
+    var next = []
+    for (var j = 0; j < this.importedSubjects.length; j++) {
+      next.push({
+        name: this.importedSubjects[j].name,
+        count: this.importedSubjects[j].count,
+        confirming: (j === idx ? !wasConfirming : false)
+      })
+    }
+    this.importedSubjects = next
+    if (wasConfirming) {
+      var result = this.$app.$def.removeImportedSubject(itemName)
+      if (result && result.ok) {
+        prompt.showToast({ message: '已删除「' + itemName + '」', duration: 1500 })
+        this._refreshImported()
+      } else {
+        prompt.showToast({ message: '删除失败', duration: 2000 })
+        var retry = []
+        for (var k = 0; k < this.importedSubjects.length; k++) {
+          retry.push({
+            name: this.importedSubjects[k].name,
+            count: this.importedSubjects[k].count,
+            confirming: (k === idx)
+          })
+        }
+        this.importedSubjects = retry
+      }
+    } else {
+      var that = this
+      this.__confirmTimer = setTimeout(function() {
+        var restore = []
+        for (var k2 = 0; k2 < that.importedSubjects.length; k2++) {
+          restore.push({
+            name: that.importedSubjects[k2].name,
+            count: that.importedSubjects[k2].count,
+            confirming: false
+          })
+        }
+        that.importedSubjects = restore
+        that.__confirmTimer = null
+      }, 4000)
+    }
+  }
+}
+</script>
+
+<style>
+@import '../../common/style.css';
+
+/* 滚动容器：从 102px 开始（header 下方），铺满剩余空间 */
+.box {
+  position: absolute;
+  left: 0px;
+  top: 102px;
+  width: 336px;
+  height: 378px;
+  flex-direction: column;
+  align-items: center;
+}
+
+.padding {
+  height: 90px;
+}
+
+/* ---------- 导入页卡片 ---------- */
+.imp-item {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0 12px;
+  margin-bottom: 10px;
+}
+
+.imp-card {
+  flex-direction: column;
+  width: 100%;
+  background-color: #18181A;
+  border: 1px solid #2A2A2E;
+  border-radius: 20px;
+  padding: 16px 20px;
+}
+
+/* Push 状态卡 */
+.imp-card--push {
+  align-items: center;
+  min-height: 80px;
+  justify-content: center;
+}
+
+.imp-push-title {
+  color: #FFFFFF;
+  font-size: 28px;
+  font-weight: bold;
+  text-align: center;
+  line-height: 36px;
+}
+
+.imp-push-hint {
+  color: #98989E;
+  font-size: 20px;
+  text-align: center;
+  margin-top: 6px;
+  line-height: 28px;
+}
+
+/* 状态卡 */
+.imp-card--status {
+  align-items: flex-start;
+}
+
+.imp-status-row {
+  flex-direction: row;
+  align-items: center;
+}
+
+.imp-status-dot {
+  font-size: 18px;
+  margin-right: 8px;
+  line-height: 22px;
+}
+
+.imp-status-dot--on {
+  color: #5BB85B;
+}
+
+.imp-status-dot--off {
+  color: #98989E;
+}
+
+.imp-status-text {
+  color: #FFFFFF;
+  font-size: 24px;
+  font-weight: bold;
+  line-height: 32px;
+}
+
+.imp-status-hint {
+  color: #98989E;
+  font-size: 20px;
+  line-height: 28px;
+  margin-top: 8px;
+}
+
+/* 管理卡 */
+.imp-card--manager {
+  align-items: flex-start;
+}
+
+.imp-section-title {
+  color: #FFFFFF;
+  font-size: 26px;
+  font-weight: bold;
+  margin-bottom: 12px;
+}
+
+.imp-subject-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.imp-subject-row__main {
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+}
+
+.imp-subject-name {
+  color: #CCCCCC;
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.imp-subject-count {
+  color: #7899BB;
+  font-size: 20px;
+  background-color: rgba(120, 153, 187, 0.12);
+  border: 1px solid rgba(120, 153, 187, 0.3);
+  border-radius: 10px;
+  padding: 2px 8px;
+  margin-left: 10px;
+  flex-shrink: 0;
+  line-height: 24px;
+}
+
+.imp-subject-del {
+  color: #E57373;
+  font-size: 22px;
+  font-weight: bold;
+  background-color: rgba(229, 115, 115, 0.12);
+  border: 1px solid rgba(229, 115, 115, 0.35);
+  border-radius: 10px;
+  padding: 4px 14px;
+  margin-left: 12px;
+  flex-shrink: 0;
+  line-height: 28px;
+}
+
+.imp-subject-del--confirm {
+  color: #FFFFFF;
+  background-color: #E53935;
+  border-color: #E53935;
+}
+
+.imp-section-hint {
+  color: #6A6A70;
+  font-size: 18px;
+  line-height: 24px;
+  margin-top: 4px;
+}
+
+/* ---------- 事件日志 ---------- */
+.imp-log-block {
+  flex-direction: column;
+  width: 100%;
+  padding: 0 12px;
+  margin-top: 4px;
+}
+
+.imp-log-title {
+  color: #98989E;
+  font-size: 22px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.imp-log-line {
+  flex-direction: row;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+
+.imp-log-text {
+  color: #98989E;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.imp-log-empty {
+  color: #98989E;
+  font-size: 20px;
+  line-height: 28px;
+}
+</style>

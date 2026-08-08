@@ -1,0 +1,333 @@
+<import name="input-method" src="../../components/InputMethod/InputMethod.ux"></import>
+
+<template>
+  <div class="page" style="flex-direction: column;">
+
+    <!-- 搜索结果列表（键盘显示时缩小高度，给键盘腾出空间） -->
+    <scroll class="box {{ !hideKeyboard ? 'box--with-keyboard' : '' }}" scroll-x="false" scroll-y="true" bounces="true" @scrollbottom="loadMore">
+      <!-- 加载中占位 -->
+      <div class="search-loading" if="{{!ready}}">
+        <text class="search-loading__text" static>加载中...</text>
+      </div>
+
+      <div class="subject-item" for="{{renderedResults}}" tid="id" if="{{ready}}" @click="onResultClick($idx)">
+        <div class="subject-item__card result-card">
+          <text class="result-subject">{{ $item.subjectName }}</text>
+          <text class="result-title">{{ $item.title }}</text>
+          <text class="result-desc">{{ $item.desc }}</text>
+        </div>
+      </div>
+
+      <div class="subject-item" if="{{ready && searchResults.length === 0}}">
+        <div class="subject-item__card" style="justify-content: center;">
+          <text class="result-empty__text" static>{{ hasSearched ? '暂无相关结果' : '点击搜索框输入关键词' }}</text>
+        </div>
+      </div>
+
+      <div class="padding"></div>
+    </scroll>
+
+    <!-- 遮罩层 -->
+    <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0; width: 336px; height: 150px;" />
+
+    <!-- 顶部栏（在遮罩之上，保持可点击） -->
+    <img static src="/common/images/back.png" @click="goBack" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
+    <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{ currentTime }}</text>
+    <text static style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center;">搜索</text>
+
+    <!-- 搜索框：用 left+width 直接定位，避免 padding 导致的布局漂移 -->
+    <div class="search-bar__inner" style="position: absolute; left: 12px; top: 86px; width: 312px; height: 56px; background-color: #18181A; border: 1px solid #2A2A2E; border-radius: 28px; padding: 0 24px; flex-direction: row; align-items: center;" @click="toggleKeyboard">
+      <text class="search-bar__text">{{ textValue || '搜索知识点...' }}</text>
+    </div>
+
+    <!-- 输入法键盘 -->
+    <input-method
+      hide="{{hideKeyboard}}"
+      keyboardtype="QWERTY"
+      screentype="rect"
+      maxlength="5"
+      vibratemode="{{vibrateMode}}"
+      @complete="onComplete"
+      @delete="onDelete"
+    ></input-method>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import { onTimeChange, offTimeChange } from '../../common/clock'
+
+export default {
+  private: {
+    textValue: '',
+    hideKeyboard: true,
+    searchResults: [],
+    renderedResults: [],
+    renderedCount: 12,
+    allItems: [],
+    hasSearched: false,
+    ready: false,
+    currentTime: '00:00',
+    vibrateMode: ''
+  },
+
+  onInit() {
+    this.__unsubClock = onTimeChange((t) => { this.currentTime = t })
+    this.vibrateMode = this.$app.$def.getKeyboardVibrateMode()
+    setTimeout(() => {
+      const items = this.$app.$def.store.getAllItems()
+      const all = []
+      const CHUNK = 30
+      let i = 0
+      const step = () => {
+        const end = Math.min(i + CHUNK, items.length)
+        for (; i < end; i++) {
+          const it = items[i]
+          // haystack 包含 raw 字段（原文），扩大搜索覆盖范围
+          const haystack = (
+            it.subjectName + '\n' +
+            it.title + '\n' +
+            it.desc + '\n' +
+            (it.points || []).join('\n') + '\n' +
+            (it.raw || '')
+          ).toLowerCase()
+          all.push({
+            id: i,
+            title: it.title,
+            desc: it.desc,
+            points: it.points,
+            subjectName: it.subjectName,
+            haystack: haystack
+          })
+        }
+        if (i < items.length) {
+          this.__hayTimer = setTimeout(step, 0)
+        } else {
+          this.__hayTimer = null
+          this.allItems = all
+          this.ready = true
+        }
+      }
+      step()
+    }, 50)
+  },
+
+  onDestroy() {
+    if (this.__unsubClock) {
+      offTimeChange(this.__unsubClock)
+    }
+    if (this.__hayTimer) {
+      clearTimeout(this.__hayTimer)
+      this.__hayTimer = null
+    }
+    if (this.__loadTimer) {
+      clearTimeout(this.__loadTimer)
+      this.__loadTimer = null
+    }
+  },
+
+  toggleKeyboard() {
+    this.hideKeyboard = !this.hideKeyboard
+  },
+
+  onComplete(evt) {
+    const ch = evt.detail.content || ''
+    this.textValue += ch
+    this.scheduleSearch()
+  },
+
+  onDelete() {
+    if (this.textValue.length > 0) {
+      this.textValue = this.textValue.slice(0, -1)
+      this.scheduleSearch()
+    }
+  },
+
+  scheduleSearch() {
+    if (this.__searchTimer) {
+      clearTimeout(this.__searchTimer)
+    }
+    this.__searchTimer = setTimeout(() => {
+      this.__searchTimer = null
+      this.doSearch()
+    }, 220)
+  },
+
+  _cancelLoadBatch() {
+    this.__loadingMore = false
+    if (this.__loadTimer) {
+      clearTimeout(this.__loadTimer)
+      this.__loadTimer = null
+    }
+  },
+
+  doSearch() {
+    const kw = this.textValue.toLowerCase().trim()
+    if (!kw) {
+      this._cancelLoadBatch()
+      this.hasSearched = false
+      this.searchResults = []
+      this.renderedResults = []
+      return
+    }
+    this.hasSearched = true
+    const all = this.allItems
+    const matched = []
+    for (let i = 0; i < all.length; i++) {
+      if (all[i].haystack.indexOf(kw) !== -1) {
+        matched.push(all[i])
+      }
+    }
+    this._cancelLoadBatch()
+    this.searchResults = matched
+    this.renderedCount = Math.min(12, matched.length)
+    this._applyRenderedResults()
+  },
+
+  _applyRenderedResults() {
+    const n = Math.min(this.renderedCount, this.searchResults.length)
+    this.renderedResults = this.searchResults.slice(0, n)
+  },
+
+  loadMore() {
+    if (this.__loadingMore) return
+    const total = this.searchResults.length
+    if (this.renderedCount >= total) return
+    this.__loadingMore = true
+    const BATCH = 6
+    const target = Math.min(this.renderedCount + 20, total)
+    const tick = () => {
+      this.renderedCount = Math.min(this.renderedCount + BATCH, target)
+      this._applyRenderedResults()
+      if (this.renderedCount < target) {
+        this.__loadTimer = setTimeout(tick, 0)
+      } else {
+        this.__loadTimer = null
+        this.__loadingMore = false
+      }
+    }
+    tick()
+  },
+
+  goBack() {
+    router.back()
+  },
+
+  onResultClick(index) {
+    const item = this.searchResults[index]
+    router.push({
+      uri: '/pages/content',
+      params: { subjectName: item.subjectName, title: item.title }
+    })
+  }
+}
+</script>
+
+<style>
+@import '../../common/style.css';
+
+.page {
+  width: 336px;
+  height: 480px;
+  background-color: #0A0A0C;
+  position: relative;
+}
+
+/* 搜索结果滚动区域 */
+.box {
+  position: absolute;
+  left: 0px;
+  top: 150px;
+  width: 336px;
+  height: 330px;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 键盘弹出时，搜索结果区缩到上半屏 */
+.box--with-keyboard {
+  height: 180px;
+}
+
+/* ---------- 搜索框 ---------- */
+.search-bar__inner {
+  width: 100%;
+  height: 56px;
+  background-color: #18181A;
+  border: 1px solid #2A2A2E;
+  border-radius: 28px;
+  padding: 0 24px;
+  flex-direction: row;
+  align-items: center;
+}
+
+.search-bar__text {
+  flex: 1;
+  font-size: 26px;
+  color: #FFFFFF;
+  line-height: 56px;
+}
+
+/* ---------- 结果卡片 ---------- */
+.subject-item {
+  padding: 0 12px;
+  margin-bottom: 10px;
+  height: auto !important;
+}
+
+.subject-item__card.result-card {
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  height: auto !important;
+  min-height: 0 !important;
+  line-height: normal;
+  padding: 12px 20px;
+}
+
+.result-subject {
+  color: #7899BB;
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+
+.result-title {
+  color: #FFFFFF;
+  font-size: 28px;
+  font-weight: 600;
+  lines: 1;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+  width: 100%;
+}
+
+.result-desc {
+  color: #98989E;
+  font-size: 20px;
+  lines: 1;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.result-empty__text {
+  color: #98989E;
+  font-size: 24px;
+}
+
+.search-loading {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  width: 100%;
+}
+
+.search-loading__text {
+  color: #98989E;
+  font-size: 24px;
+}
+
+.padding {
+  height: 90px;
+}
+</style>

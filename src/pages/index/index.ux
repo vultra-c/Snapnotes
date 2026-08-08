@@ -1,0 +1,279 @@
+<template>
+  <div class="page" style="flex-direction: column;" @swipe="onSwipe">
+
+    <!-- 空状态 -->
+    <div if="{{allItems.length == 0}}" style="position: absolute; left: 0px; top: 102px; width: 336px; height: 240px; flex-direction: column; justify-content: center; align-items: center;">
+      <img static src="/common/images/empty_state.png" style="width: 96px; height: 96px;" />
+      <text static style="line-height: 36px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.4); text-align: center; margin-top: 16px;">没有文件</text>
+    </div>
+
+    <!-- 文件夹列表（完全参照考点阅读器结构） -->
+    <list class="list" id="homeList" if="{{allItems.length > 0}}">
+      <list-item for="{{visibleItems}}" tid="id" class="item" type="folder" @click="onItemClick($item)" @longpress="onLongPress($item)">
+        <div class="item-content">
+          <text class="itemtext">{{$item.name}}</text>
+          <text class="itemtext2">{{$item.subtitle}}</text>
+        </div>
+        <img static src="/common/images/enter.png" class="arrow" />
+      </list-item>
+      <!-- 底部占位 -->
+      <list-item type="footer" class="list-padding"></list-item>
+    </list>
+
+    <!-- 顶部栏（参照全局设置和考点阅读页：仅 hd.png 一张渐变遮罩） -->
+    <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
+    <img static src="/common/images/back.png" @click="exitApp" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
+    <img static src="/common/images/more.png" @click="goSettings" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />
+    <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>
+    <text static style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center;">闪念小抄</text>
+
+    <!-- 右下角全局搜索图标 -->
+    <img static src="/common/images/search.png" @click="goSearch" class="fab fab--search" />
+    <!-- 左下角 AI 聊天图标 -->
+    <img static src="/common/images/chat.png" @click="goChat" class="fab fab--chat" />
+
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import app from '@system.app'
+import storage from '@system.storage'
+import dataManager from '../../common/utils/dataManager.js'
+import { onTimeChange, offTimeChange } from '../../common/clock.js'
+import appState from '../../common/utils/appState.js'
+
+export default {
+  private: {
+    nowTime: '00:00',
+    __unsubClock: null,
+    timeFormat: '24h',
+    allItems: [],
+    visibleItems: [],
+    isNavigating: false,
+    longPressTriggered: false,
+    _unsubReceive: null
+  },
+
+  onInit() {
+    this.loadTimeFormat()
+    this.__unsubClock = onTimeChange((t) => {
+      if (this.$valid) {
+        this.nowTime = this._fmtClock(t)
+      }
+    })
+
+    if (this.$app.$def && this.$app.$def.onReceive) {
+      this._unsubReceive = this.$app.$def.onReceive((evt) => {
+        if (!this.$valid) return
+        if (evt && (evt.kind === 'userdata-loaded' || evt.kind === 'userdata-changed' || evt.kind === 'imported')) {
+          this.loadData()
+        }
+      })
+    }
+  },
+
+  _fmtClock(t) {
+    if (this.timeFormat === '12h') {
+      var parts = t.split(':')
+      var h = parseInt(parts[0], 10) || 0
+      var m = parts[1] || '00'
+      var ampm = h >= 12 ? '下午' : '上午'
+      h = h % 12 || 12
+      return ampm + ' ' + h + ':' + m
+    }
+    return t
+  },
+
+  loadTimeFormat() {
+    storage.get({
+      key: 'KD_TIME_FORMAT',
+      success: (data) => {
+        if (!this.$valid) return
+        if (data) {
+          this.timeFormat = data
+        }
+        var now = new Date()
+        var hh = String(now.getHours()).padStart(2, '0')
+        var mm = String(now.getMinutes()).padStart(2, '0')
+        this.nowTime = this._fmtClock(hh + ':' + mm)
+      },
+      fail: () => {
+        if (!this.$valid) return
+        var now = new Date()
+        var hh = String(now.getHours()).padStart(2, '0')
+        var mm = String(now.getMinutes()).padStart(2, '0')
+        this.nowTime = this._fmtClock(hh + ':' + mm)
+      }
+    })
+  },
+
+  onShow() {
+    this.isNavigating = false
+    this.longPressTriggered = false
+    if (appState.needRefreshList) {
+      appState.needRefreshList = false
+    }
+    this.loadData()
+  },
+
+  onDestroy() {
+    if (this.__unsubClock) {
+      offTimeChange(this.__unsubClock)
+      this.__unsubClock = null
+    }
+    if (this._unsubReceive) {
+      this._unsubReceive()
+      this._unsubReceive = null
+    }
+  },
+
+  loadData() {
+    var items = []
+    var that = this
+
+    // 同步加载知识点科目（通常为空，仅手机端导入后才有）
+    try {
+      var store = this.$app.$def && this.$app.$def.store
+      if (store && store.getSubjects) {
+        var subjects = store.getSubjects()
+        if (subjects && subjects.length > 0) {
+          for (var i = 0; i < subjects.length; i++) {
+            var s = subjects[i]
+            items.push({
+              id: 'kd_' + i + '_' + s.name,
+              name: s.name,
+              subtitle: s.count + '个知识点',
+              type: 'knowledge',
+              knowledgeSubject: s.name,
+              imported: s.imported
+            })
+          }
+        }
+      }
+    } catch (e) {
+      console.log('load knowledge subjects error: ' + e)
+    }
+
+    // 先显示已有知识点（立即可见，减少白屏时间）
+    this.allItems = items
+    this.visibleItems = items
+
+    // 异步加载文件夹/考点，加载后追加到列表
+    dataManager.getTopLevelFolders().then(function(folders) {
+      if (folders) {
+        folders.forEach(function(folder) {
+          var subtitle = folder.type === 'folder' ? '文件夹' : '考点'
+          items.push({
+            id: folder.id,
+            name: folder.name,
+            subtitle: subtitle,
+            type: folder.type || 'content',
+            path: folder.id
+          })
+        })
+      }
+      if (that.$valid) {
+        that.allItems = items
+        that.visibleItems = items
+      }
+    }).catch(function(e) {
+      console.log('load folders error: ' + e)
+    })
+  },
+
+  // 点击列表项 → 进入文件夹/考点
+  onItemClick(item) {
+    if (this.isNavigating) return
+    // 长按后阻止点击事件
+    if (this.longPressTriggered) {
+      this.longPressTriggered = false
+      return
+    }
+    if (!item) return
+    this.isNavigating = true
+
+    if (item.type === 'knowledge') {
+      router.push({
+        uri: '/pages/subfolder',
+        params: { knowledgeSubject: item.knowledgeSubject }
+      })
+    } else if (item.type === 'folder') {
+      router.push({
+        uri: '/pages/subfolder',
+        params: { path: item.id }
+      })
+    } else {
+      router.push({
+        uri: '/pages/reader',
+        params: { path: item.id }
+      })
+    }
+  },
+
+  // 长按列表项 → 跳转删除确认页
+  onLongPress(item) {
+    if (this.isNavigating) return
+    if (!item) return
+    this.longPressTriggered = true
+    this.isNavigating = true
+
+    // 知识点科目删除
+    if (item.type === 'knowledge') {
+      router.push({
+        uri: '/pages/deleteConfirm',
+        params: {
+          action: 'deleteKnowledge',
+          name: item.knowledgeSubject || item.name
+        }
+      })
+      return
+    }
+
+    // 文件夹/考点删除
+    router.push({
+      uri: '/pages/deleteConfirm',
+      params: {
+        action: item.type === 'folder' ? 'deleteFolder' : 'deleteContent',
+        path: item.id,
+        name: item.name
+      }
+    })
+  },
+
+  goSettings() {
+    router.push({ uri: '/pages/globalSettings', params: { currentPath: 'bt_root' } })
+  },
+
+  goSearch() {
+    router.push({ uri: '/pages/search', params: { scope: 'global' } })
+  },
+
+  goChat() {
+    router.push({ uri: '/pages/chat' })
+  },
+
+  exitApp() {
+    app.terminate()
+  },
+
+  onSwipe(e) {
+    if (e.direction === 'right') {
+      app.terminate()
+    }
+  },
+
+  onBackPress() {
+    app.terminate()
+    return true
+  }
+}
+</script>
+
+<style>
+  @import '../../common/style.css';
+  .list-padding {
+    height: 90px;
+    width: 100%;
+  }
+</style>

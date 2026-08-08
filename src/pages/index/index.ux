@@ -20,10 +20,8 @@
       <list-item type="footer" class="list-padding"></list-item>
     </list>
 
-    <!-- 顶部栏 -->
+    <!-- 顶部栏（参照全局设置和考点阅读页：仅 hd.png 一张渐变遮罩） -->
     <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
-    <!-- 渐变遮罩（参照喵喵电子书和全局设置样式） -->
-    <img static src="/common/images/mask_up.png" style="position: absolute; top: 0; left: 0; width: 336px; height: 86px;" />
     <img static src="/common/images/back.png" @click="exitApp" style="position: absolute; left: 6px; top: 6px; width: 72px; height: 72px;" />
     <img static src="/common/images/more.png" @click="goSettings" style="position: absolute; left: 258px; top: 6px; width: 72px; height: 72px;" />
     <text style="position: absolute; left: 78px; top: 6px; width: 180px; line-height: 30px; font-weight: bold; font-size: 24px; color: rgba(255,255,255,0.6); text-align: center;">{{nowTime}}</text>

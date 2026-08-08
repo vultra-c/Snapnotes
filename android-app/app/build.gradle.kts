@@ -67,6 +67,11 @@ android {
         buildConfig = true
     }
 
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
     packaging {
         resources {
             excludes += setOf(

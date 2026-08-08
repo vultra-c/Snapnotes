@@ -32,7 +32,7 @@
     <!-- 左下角 AI 聊天图标 -->
     <img static src="/common/images/chat.png" @click="goChat" class="fab fab--chat" />
     <!-- 底部中间添加按钮 -->
-    <img static src="/common/images/plus.jpg" @click="goAddAction" class="fab fab--add" />
+    <img static src="/common/images/plus.png" @click="goAddAction" class="fab fab--add" />
 
   </div>
 </template>

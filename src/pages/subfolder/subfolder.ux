@@ -35,7 +35,7 @@
     <text style="position: absolute; left: 78px; top: 36px; width: 180px; line-height: 42px; font-weight: bold; font-size: 32px; color: white; text-align: center; lines: 1; text-overflow: ellipsis;">{{pageName}}</text>
 
     <!-- 添加按钮（仅文件夹模式显示） -->
-    <img static src="/common/images/plus.jpg" @click="goAddAction" class="fab fab--add" if="{{!knowledgeSubject}}" />
+    <img static src="/common/images/plus.png" @click="goAddAction" class="fab fab--add" if="{{!knowledgeSubject}}" />
 
   </div>
 </template>

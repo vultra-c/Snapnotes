@@ -116,8 +116,8 @@ export default {
   },
 
   onComplete(e) {
-    if (e && e.detail && e.detail.text) {
-      this.textValue = this.textValue + e.detail.text
+    if (e && e.detail && e.detail.content) {
+      this.textValue = this.textValue + e.detail.content
     }
   },
 

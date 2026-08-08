@@ -1,25 +1,23 @@
 <template>
   <div class="page" style="flex-direction: column;" @swipe="onSwipe">
 
-    <!-- 操作列表 -->
-    <list class="list" id="actionList">
-      <list-item class="item" type="action" @click="onCreateFolder">
+    <!-- 操作列表（使用静态布局，禁止上下滑动） -->
+    <div class="action-list">
+      <div class="item" @click="onCreateFolder">
         <div class="item-content">
           <text class="itemtext">新建文件夹</text>
           <text class="itemtext2">在当前目录创建</text>
         </div>
         <img static src="/common/images/enter.png" class="arrow" />
-      </list-item>
-      <list-item class="item" type="action" @click="onUploadContent">
+      </div>
+      <div class="item" @click="onUploadContent">
         <div class="item-content">
           <text class="itemtext">上传考点</text>
           <text class="itemtext2">从手机端接收</text>
         </div>
         <img static src="/common/images/enter.png" class="arrow" />
-      </list-item>
-      <!-- 底部占位 -->
-      <list-item type="footer" class="list-padding"></list-item>
-    </list>
+      </div>
+    </div>
 
     <!-- 顶部栏（参照全局设置和考点阅读页：仅 hd.png 一张渐变遮罩） -->
     <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
@@ -133,6 +131,14 @@ export default {
 
 <style>
   @import '../../common/style.css';
+  .action-list {
+    position: absolute;
+    top: 102px;
+    left: 0px;
+    width: 336px;
+    padding: 0 6px;
+    flex-direction: column;
+  }
   .list-padding {
     height: 90px;
     width: 100%;

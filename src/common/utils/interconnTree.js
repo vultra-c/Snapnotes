@@ -22,6 +22,7 @@
  */
 import { interconnModule } from './interconn.js';
 import dataManager from './dataManager.js';
+import knowledgeStore from '../knowledgeStore.js';
 
 // 不使用 ES2022 static class fields，改为构造函数挂载（兼容小米手环10 Pro）
 function interconnTree(options) {
@@ -77,21 +78,94 @@ interconnTree.prototype.name = 'tree';
 
 /**
  * 处理获取文件树请求
+ * 合并 knowledgeStore 中的知识点科目（作为文件夹节点）和 dataManager 中的 BT 文件夹/文件
  */
-interconnTree.prototype.handleGetTree = function() {
+interconnTree.prototype.handleGetTree = function(retryCount) {
   var self = this;
-  console.log('[BT-Tree] getTree request');
-  dataManager.getFolderTreeForBluetooth().then(function(tree) {
+  retryCount = retryCount || 0;
+
+  // 知识点数据由 app.ux onCreate 异步读取（file.readText），
+  // 若尚未加载完成则等待重试，最多 10 次（约 3 秒）。
+  if (typeof knowledgeStore.isLoaded === 'function' && !knowledgeStore.isLoaded()) {
+    if (retryCount < 10) {
+      console.log('[BT-Tree] knowledgeStore not loaded yet, retry ' + (retryCount + 1) + '/10');
+      setTimeout(function() { self.handleGetTree(retryCount + 1); }, 300);
+      return;
+    }
+    console.warn('[BT-Tree] knowledgeStore still not loaded after 10 retries, proceeding with empty data');
+  }
+
+  console.log('[BT-Tree] getTree request (retry=' + retryCount + ')');
+  dataManager.getFolderTreeForBluetooth().then(function(btTree) {
+    // 从 knowledgeStore 获取知识点科目，构造为文件夹节点
+    var kdTree = [];
+    try {
+      var subjects = knowledgeStore.getSubjects();
+      console.log('[BT-Tree] knowledgeStore subjects: ' + (subjects ? subjects.length : 0));
+      for (var i = 0; i < subjects.length; i++) {
+        var subj = subjects[i];
+        var points = knowledgeStore.getKnowledge(subj.name);
+        console.log('[BT-Tree] subject "' + subj.name + '": ' + (points ? points.length : 0) + ' points');
+        var children = [];
+        for (var j = 0; j < points.length; j++) {
+          children.push({
+            id: 'kd_point_' + i + '_' + j,
+            name: points[j].title || ('知识点' + (j + 1)),
+            type: 'content'
+          });
+        }
+        kdTree.push({
+          id: 'kd_subject_' + i,
+          name: subj.name,
+          type: 'folder',
+          children: children
+        });
+      }
+    } catch (e) {
+      console.log('[BT-Tree] knowledgeStore merge error: ' + e);
+    }
+
+    var tree = kdTree.concat(btTree || []);
+    console.log('[BT-Tree] tree total: ' + tree.length + ' nodes (kd=' + kdTree.length + ' bt=' + (btTree ? btTree.length : 0) + ')');
     self.send({
       response: 'treeData',
       tree: tree
     }).then(function() {
-      console.log('[BT-Tree] Tree sent (' + (tree ? tree.length : 0) + ' top-level nodes)');
+      console.log('[BT-Tree] Tree sent successfully');
     }, function() {
       console.log('[BT-Tree] send treeData failed');
     });
   }, function(e) {
     console.error('[BT-Tree] getTree error: ' + e);
+    // 即使 dataManager 失败，也尝试发送 knowledgeStore 数据
+    var kdTree = [];
+    try {
+      var subjects = knowledgeStore.getSubjects();
+      for (var i = 0; i < subjects.length; i++) {
+        var subj = subjects[i];
+        var points = knowledgeStore.getKnowledge(subj.name);
+        var children = [];
+        for (var j = 0; j < points.length; j++) {
+          children.push({
+            id: 'kd_point_' + i + '_' + j,
+            name: points[j].title || ('知识点' + (j + 1)),
+            type: 'content'
+          });
+        }
+        kdTree.push({
+          id: 'kd_subject_' + i,
+          name: subj.name,
+          type: 'folder',
+          children: children
+        });
+      }
+    } catch (e2) {
+      console.log('[BT-Tree] fallback knowledgeStore error: ' + e2);
+    }
+    self.send({
+      response: 'treeData',
+      tree: kdTree
+    });
   });
 };
 

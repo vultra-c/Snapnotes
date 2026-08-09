@@ -292,5 +292,14 @@ function getAllItems() {
   return all
 }
 
-export { setUserData, getSubjects, getKnowledge, getAllItems, loadExtraByName, mergeParsedInto, getUserDataJSON, removeSubject, setUserFormulaIndex, getUserFormulaIndex }
-export default { setUserData, getSubjects, getKnowledge, getAllItems, loadExtraByName, mergeParsedInto, getUserDataJSON, removeSubject, setUserFormulaIndex, getUserFormulaIndex }
+/**
+ * 检查用户数据是否已加载（app.ux onCreate 异步读取完成后置为 true）。
+ * 用于 interconnTree 等模块判断是否可以安全读取 getSubjects/getKnowledge。
+ * @returns {boolean}
+ */
+function isLoaded() {
+  return userSubjects !== null
+}
+
+export { setUserData, isLoaded, getSubjects, getKnowledge, getAllItems, loadExtraByName, mergeParsedInto, getUserDataJSON, removeSubject, setUserFormulaIndex, getUserFormulaIndex }
+export default { setUserData, isLoaded, getSubjects, getKnowledge, getAllItems, loadExtraByName, mergeParsedInto, getUserDataJSON, removeSubject, setUserFormulaIndex, getUserFormulaIndex }

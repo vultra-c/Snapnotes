@@ -608,22 +608,10 @@ export default {
       if (!ok) reason = 'persist ' + (persistResult.code || 'fail')
       console.log('file transfer completed: ' + fullJson.length + 'B persisted=' + ok)
 
-      // 在文件树中创建内容节点（无论是否指定目标文件夹）
-      if (ok) {
-        try {
-          const subjectNames = Object.keys(parsed)
-          for (let i = 0; i < subjectNames.length; i++) {
-            const name = subjectNames[i]
-            const list = parsed[name]
-            if (Array.isArray(list) && list.length > 0) {
-              dataManager.addBluetoothContent(name, fullJson, st.targetFolderId)
-            }
-          }
-          console.log('content nodes created in folder: ' + (st.targetFolderId || 'bt_root'))
-        } catch (e2) {
-          console.log('create content nodes fail: ' + e2)
-        }
-      }
+      // 知识点 JSON 仅写入 knowledgeStore，不在文件树中创建冗余内容节点。
+      // knowledgeStore 已实现「科目=文件夹，知识点条目=文件」的层级导航：
+      //   主页点击科目 → subfolder 页显示知识点列表 → 点击条目 → content 页显示内容
+      // 旧版 dataManager.addBluetoothContent 会在主页产生重复条目（显示原始 JSON），已移除。
     } catch (e) {
       reason = 'parse/merge fail'
       console.log('file transfer finalize fail: ' + e)

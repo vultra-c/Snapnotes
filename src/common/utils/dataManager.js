@@ -1418,6 +1418,16 @@ export default {
     return new Promise((resolve) => {
       getBluetoothMeta().then((metaList) => {
         if (!metaList) metaList = []
+        // 检查节点是否存在
+        var nodeExists = false
+        for (var i = 0; i < metaList.length; i++) {
+          if (metaList[i].id === nodeId) { nodeExists = true; break }
+        }
+        if (!nodeExists) {
+          console.log('[DM] deleteBluetoothNode: node not found: ' + nodeId)
+          resolve(false)
+          return
+        }
         // 一次遍历建 parent → children 索引（用普通对象替代 ES6 Map）
         var childrenIndex = {}
         for (var i = 0; i < metaList.length; i++) {

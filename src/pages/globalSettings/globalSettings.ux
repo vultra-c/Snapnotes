@@ -164,6 +164,13 @@ export default {
     this.loadStorageInfo()
   },
 
+  // 监听知识点数据加载完成事件（app.ux 广播）
+  onReceive(evt) {
+    if (evt && (evt.kind === 'userdata-loaded' || evt.kind === 'userdata-changed' || evt.kind === 'imported')) {
+      this.loadContentCount()
+    }
+  },
+
   onDestroy() {
     if (this.__unsubClock) {
       offTimeChange(this.__unsubClock)
@@ -307,6 +314,13 @@ export default {
     try {
       const store = this.$app.$def && this.$app.$def.store
       if (store && store.getSubjects) {
+        // 如果数据尚未加载，延迟重试
+        if (typeof store.isLoaded === 'function' && !store.isLoaded()) {
+          setTimeout(() => {
+            if (this.$valid) this.loadContentCount()
+          }, 500)
+          return
+        }
         const subjects = store.getSubjects()
         let builtin = 0
         let total = 0

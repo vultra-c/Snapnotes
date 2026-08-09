@@ -216,11 +216,24 @@ interconnTree.prototype.handleCreateFolder = function(payload) {
 
 /**
  * 处理删除节点请求
+ * 知识点节点（kd_subject_ / kd_point_）不支持删除，返回错误提示
  */
 interconnTree.prototype.handleDeleteNode = function(payload) {
   var self = this;
   var nodeId = payload.nodeId;
   console.log('[BT-Tree] deleteNode: ' + nodeId);
+
+  // 知识点节点不支持删除（由手机端知识库管理，非手环文件系统）
+  if (nodeId && (nodeId.indexOf('kd_subject_') === 0 || nodeId.indexOf('kd_point_') === 0)) {
+    console.log('[BT-Tree] skip kd_ node delete: ' + nodeId);
+    self.send({
+      response: 'nodeDeleted',
+      success: false,
+      error: '知识点节点不支持在此删除，请到知识点管理中操作'
+    });
+    return;
+  }
+
   dataManager.deleteBluetoothNode(nodeId).then(function() {
     self.send({
       response: 'nodeDeleted',
@@ -237,6 +250,7 @@ interconnTree.prototype.handleDeleteNode = function(payload) {
 
 /**
  * 处理重命名节点请求
+ * 知识点节点（kd_subject_ / kd_point_）不支持重命名，返回错误提示
  * @param {string} nodeId 节点 ID
  * @param {string} newName 新名称
  */
@@ -245,6 +259,18 @@ interconnTree.prototype.handleRenameNode = function(payload) {
   var nodeId = payload.nodeId;
   var newName = payload.newName;
   console.log('[BT-Tree] renameNode: ' + nodeId + ' -> ' + newName);
+
+  // 知识点节点不支持重命名
+  if (nodeId && (nodeId.indexOf('kd_subject_') === 0 || nodeId.indexOf('kd_point_') === 0)) {
+    console.log('[BT-Tree] skip kd_ node rename: ' + nodeId);
+    self.send({
+      response: 'nodeRenamed',
+      success: false,
+      error: '知识点节点不支持重命名，请到知识点管理中操作'
+    });
+    return;
+  }
+
   dataManager.renameBluetoothNode(nodeId, newName).then(function(success) {
     self.send({
       response: 'nodeRenamed',

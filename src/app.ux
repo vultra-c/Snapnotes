@@ -95,6 +95,22 @@ export default {
     return { ok: true, persisted: persistResult.ok && fiResult.ok }
   },
 
+  /**
+   * 删除指定科目下的单个知识点（按索引）。
+   * 由 deleteConfirm.ux 调用，替换原来的 removeImportedSubject 误删整个科目。
+   * @param {string} subjectName 科目名
+   * @param {number} index 知识点在 subject 列表中的索引
+   * @returns {{ok:boolean,reason?:string,persisted?:boolean}}
+   */
+  removeKnowledgePoint(subjectName, index) {
+    const removed = knowledgeStore.removeKnowledgePoint(subjectName, index)
+    if (!removed) return { ok: false, reason: 'not-found' }
+    const persistResult = this._persistCurrentUserData()
+    const fiResult = this._persistFormulaIndex()
+    this._broadcastReceive({ kind: 'userdata-changed' })
+    return { ok: true, persisted: persistResult.ok && fiResult.ok }
+  },
+
   _collectSubjectFormulaFiles(name) {
     const idx = knowledgeStore.getUserFormulaIndex()
     const prefix = name + '#'

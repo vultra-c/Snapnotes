@@ -291,15 +291,17 @@ export default {
     if (this.isNavigating) return
     if (!item) return
 
-    // 知识点条目：长按可删除（所有知识点均可删除）
+    // 知识点条目：长按可删除单个知识点（不再误删整个科目）
     if (item.type === 'knowledge_point') {
       this.longPressTriggered = true
       this.isNavigating = true
       router.push({
         uri: '/pages/deleteConfirm',
         params: {
-          action: 'deleteKnowledge',
-          name: this.knowledgeSubject
+          action: 'deleteKnowledgePoint',
+          knowledgeSubject: this.knowledgeSubject,
+          knowledgeIndex: item.knowledgeIndex,
+          name: item.name
         }
       })
       return

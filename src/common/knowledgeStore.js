@@ -301,5 +301,35 @@ function isLoaded() {
   return userSubjects !== null
 }
 
-export { setUserData, isLoaded, getSubjects, getKnowledge, getAllItems, loadExtraByName, mergeParsedInto, getUserDataJSON, removeSubject, setUserFormulaIndex, getUserFormulaIndex }
-export default { setUserData, isLoaded, getSubjects, getKnowledge, getAllItems, loadExtraByName, mergeParsedInto, getUserDataJSON, removeSubject, setUserFormulaIndex, getUserFormulaIndex }
+/**
+ * 删除指定科目下的单个知识点（按索引）。
+ * 删除后由调用方(app.ux removeKnowledgePoint)负责落盘全量快照。
+ * 若该科目知识点全部删完则自动移除该科目。
+ * @param {string} subjectName 科目名
+ * @param {number} index 知识点在 subject 列表中的索引
+ * @returns {boolean} 是否真删了
+ */
+function removeKnowledgePoint(subjectName, index) {
+  if (!subjectName || !userSubjects) return false
+  var list = userSubjects[subjectName]
+  if (!list || !Array.isArray(list)) return false
+  if (typeof index !== 'number' || index < 0 || index >= list.length) return false
+  // 清理该知识点的公式图片索引条目
+  var point = list[index]
+  if (point && point.id) {
+    var prefix = subjectName + '#' + point.id
+    for (var key in userFormulaIndex) {
+      if (key === prefix) delete userFormulaIndex[key]
+    }
+  }
+  // 从数组中移除
+  list.splice(index, 1)
+  // 如果该科目下没有知识点，自动移除科目
+  if (list.length === 0) {
+    delete userSubjects[subjectName]
+  }
+  return true
+}
+
+export { setUserData, isLoaded, getSubjects, getKnowledge, getAllItems, loadExtraByName, mergeParsedInto, getUserDataJSON, removeSubject, removeKnowledgePoint, setUserFormulaIndex, getUserFormulaIndex }
+export default { setUserData, isLoaded, getSubjects, getKnowledge, getAllItems, loadExtraByName, mergeParsedInto, getUserDataJSON, removeSubject, removeKnowledgePoint, setUserFormulaIndex, getUserFormulaIndex }

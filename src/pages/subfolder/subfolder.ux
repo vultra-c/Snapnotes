@@ -14,7 +14,7 @@
 
     <!-- 文件夹/考点列表 -->
     <list class="list" if="{{visibleItems.length > 0}}" id="subList" @scrollbottom="loadMore">
-      <list-item for="{{visibleItems}}" tid="id" class="item" type="item" @click="onItemClick($item)" @longpress="onLongPress($item)">
+      <list-item for="{{visibleItems}}" tid="id" class="item {{$item.enter && !$item.revealed ? 'item--enter' : ''}} {{$item.enter && $item.revealed ? 'item--shown' : ''}} {{pressedId === $item.id ? 'item--pressed' : ''}}" type="item" @click="onItemClick($item)" @longpress="onLongPress($item)">
         <div class="item-content">
           <text class="itemtext">{{$item.name}}</text>
           <text class="itemtext2">{{$item.subtitle}}</text>
@@ -55,6 +55,7 @@ export default {
     visibleItems: [],
     isNavigating: false,
     longPressTriggered: false,
+    pressedId: '',
     // 知识点分片加载
     ready: true,
     totalCount: 0
@@ -120,6 +121,7 @@ export default {
     pageAnim.playReturn(this)
     this.isNavigating = false
     this.longPressTriggered = false
+    this.pressedId = ''
     this.loadData()
   },
 
@@ -140,10 +142,14 @@ export default {
       return
     }
 
-    // 文件夹模式
+    // 文件夹模式：首次进入时内容错峰淡入（复刻固件 lv 档动画）
     dataManager.getVisibleChildren(this.path).then(function(children) {
       if (this.$valid) {
-        this.allItems = children || []
+        children = children || []
+        if (pageAnim.markReveal(this, children)) {
+          pageAnim.playReveal(this, children)
+        }
+        this.allItems = children
         this.visibleItems = this.allItems
       }
     }.bind(this))
@@ -188,6 +194,10 @@ export default {
         this.totalCount = this.__allList.length
         this.ready = false
         this.visibleItems = []
+        // 首次进入时内容错峰淡入
+        if (pageAnim.markReveal(this, this.__allList)) {
+          pageAnim.playReveal(this, this.__allList)
+        }
         this._loadMoreChunk()
       } else {
         this.__allList = []
@@ -240,6 +250,7 @@ export default {
   },
 
   // 点击列表项 → 进入内容
+  // 先播放按下反馈（背景 180ms 过渡），短暂延迟后再跳转，让“打开文件夹”有明确的按下手感
   onItemClick(item) {
     if (this.isNavigating) return
     // 长按后阻止点击事件
@@ -249,7 +260,17 @@ export default {
     }
     if (!item) return
     this.isNavigating = true
+    this.pressedId = item.id
 
+    var that = this
+    setTimeout(function() {
+      if (!that.$valid) return
+      that.pressedId = ''
+      that._goItem(item)
+    }, pageAnim.pressMs)
+  },
+
+  _goItem(item) {
     // 知识点条目：导航到内容页
     if (item.type === 'knowledge_point') {
       router.push({

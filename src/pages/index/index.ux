@@ -9,7 +9,7 @@
 
     <!-- 文件夹列表（完全参照考点阅读器结构） -->
     <list class="list" id="homeList" if="{{allItems.length > 0}}">
-      <list-item for="{{visibleItems}}" tid="id" class="item" type="folder" @click="onItemClick($item)" @longpress="onLongPress($item)">
+      <list-item for="{{visibleItems}}" tid="id" class="item {{pressedId === $item.id ? 'item--pressed' : ''}}" type="folder" @click="onItemClick($item)" @longpress="onLongPress($item)">
         <div class="item-content">
           <text class="itemtext">{{$item.name}}</text>
           <text class="itemtext2">{{$item.subtitle}}</text>
@@ -54,6 +54,7 @@ export default {
     visibleItems: [],
     isNavigating: false,
     longPressTriggered: false,
+    pressedId: '',
     _unsubReceive: null
   },
 
@@ -114,6 +115,7 @@ export default {
     pageAnim.playReturn(this)
     this.isNavigating = false
     this.longPressTriggered = false
+    this.pressedId = ''
     if (appState.needRefreshList) {
       appState.needRefreshList = false
     }
@@ -186,6 +188,7 @@ export default {
   },
 
   // 点击列表项 → 进入文件夹/考点
+  // 先播放按下反馈（背景 180ms 过渡），短暂延迟后再跳转，让“打开文件夹”有明确的按下手感
   onItemClick(item) {
     if (this.isNavigating) return
     // 长按后阻止点击事件
@@ -195,7 +198,17 @@ export default {
     }
     if (!item) return
     this.isNavigating = true
+    this.pressedId = item.id
 
+    var that = this
+    setTimeout(function() {
+      if (!that.$valid) return
+      that.pressedId = ''
+      that._goItem(item)
+    }, pageAnim.pressMs)
+  },
+
+  _goItem(item) {
     if (item.type === 'knowledge') {
       router.push({
         uri: '/pages/subfolder',

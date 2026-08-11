@@ -43,7 +43,8 @@ import pageAnim from '../../common/utils/pageAnim.js'
 
 export default {
   private: {
-    animStyle: pageAnim.enterStyle,
+    // 弹层页：淡入（固件 FADE_IN 240ms）而非压栈滑动
+    animStyle: pageAnim.fadeStyle,
     nowTime: '00:00',
     __unsubClock: null,
     timeFormat: '24h',

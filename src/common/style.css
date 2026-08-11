@@ -18,6 +18,8 @@
 }
 
 /* 列表项卡片 */
+/* transition：按下反馈用 background-color（180ms fast 档），
+   内容入场淡入用 opacity（280ms lv 档）——Vela 的 transition 不支持 transform */
 .item {
   width: 100%;
   height: 112px;
@@ -28,6 +30,24 @@
   justify-content: space-between;
   align-items: center;
   flex-direction: row;
+  transition-property: background-color, opacity;
+  transition-duration: 180ms, 280ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1), cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* 按下反馈（LVGL 对象动画手感）：跳转前背景短暂变亮 */
+.item--pressed {
+  background-color: #3a3a3e;
+}
+
+/* 文件夹内容错峰入场：初始隐藏 */
+.item--enter {
+  opacity: 0;
+}
+
+/* 文件夹内容错峰入场：已显示（transition 负责淡入过程） */
+.item--shown {
+  opacity: 1;
 }
 
 /* 选中状态 */
@@ -227,6 +247,16 @@
   }
   100% {
     transform: translateX(0px);
+    opacity: 1;
+  }
+}
+
+/* 对话框淡入（固件 SCR_LOAD_ANIM FADE_IN，240ms fade 档，用于删除确认/新建文件夹等弹层页） */
+@keyframes vela-page-fade {
+  0% {
+    opacity: 0;
+  }
+  100% {
     opacity: 1;
   }
 }

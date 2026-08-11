@@ -1,12 +1,12 @@
 name: Vela App Release
 
 on:
-  workflow_dispatch:            # 手动点 Run workflow 触发
+  workflow_dispatch:
   push:
     branches:
-      - main                    # 每次更新 main 分支源码自动打包
+      - main
     tags:
-      - 'v*'                    # 打 v* 标签时也触发
+      - 'v*'
 
 permissions:
   contents: write
@@ -27,9 +27,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Vela toolkit
-        run: npm install -g @vela/aiot-toolkit @vela/cli
-
       - name: Restore signing keys
         run: |
           mkdir -p sign
@@ -37,7 +34,7 @@ jobs:
           echo "${{ secrets.VELA_CERT_BASE64 }}" | base64 --decode > sign/certificate.pem
 
       - name: Build release package
-        run: aiot release
+        run: npx aiot release
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5
@@ -45,7 +42,6 @@ jobs:
           name: vela-app-release
           path: dist/*.rpk
 
-      # 只有打 tag 时才创建 GitHub Release
       - name: Create GitHub Release (on tag only)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2

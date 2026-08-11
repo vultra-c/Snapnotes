@@ -234,10 +234,11 @@ interconnTree.prototype.handleDeleteNode = function(payload) {
     return;
   }
 
-  dataManager.deleteBluetoothNode(nodeId).then(function() {
+  dataManager.deleteBluetoothNode(nodeId).then(function(result) {
     self.send({
       response: 'nodeDeleted',
-      success: true
+      success: !!result,
+      error: result ? undefined : '节点不存在'
     });
   }, function(e) {
     self.send({

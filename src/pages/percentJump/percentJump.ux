@@ -1,5 +1,5 @@
 <template>
-  <div class="page" style="flex-direction: column;" @swipe="onSwipe">
+  <div class="page" style="flex-direction: column;{{animStyle}}" @swipe="onSwipe">
 
     <!-- 预览框 -->
     <div class="preview-item" style="height: 108px; top: 86px;">
@@ -44,9 +44,11 @@ import router from '@system.router'
 import prompt from '@system.prompt'
 import { onTimeChange, offTimeChange } from '../../common/clock.js'
 import appState from '../../common/utils/appState.js'
+import pageAnim from '../../common/utils/pageAnim.js'
 
 export default {
   private: {
+    animStyle: pageAnim.enterStyle,
     nowTime: '00:00',
     __unsubClock: null,
     inputPercent: '0',
@@ -114,7 +116,7 @@ export default {
         appState.jumpToPage = targetPage
       }
       appState.needBackToReader = true
-      router.back()
+      pageAnim.markBack(); router.back()
       return
     }
 
@@ -129,17 +131,17 @@ export default {
   },
 
   goBack() {
-    router.back()
+    pageAnim.markBack(); router.back()
   },
 
   onSwipe(e) {
     if (e.direction === 'right') {
-      router.back()
+      pageAnim.markBack(); router.back()
     }
   },
 
   onBackPress() {
-    router.back()
+    pageAnim.markBack(); router.back()
     return true
   }
 }

@@ -1,5 +1,5 @@
 <template>
-  <div class="page" style="flex-direction: column;width: 336px;">
+  <div class="page" style="flex-direction: column;width: 336px;{{animStyle}}">
 
     <!-- State: waiting for connection -->
     <div style="flex-direction: column;margin-top: 46px;width: 336px;" if="{{state == 'wait'}}">
@@ -82,9 +82,11 @@
 import router from '@system.router'
 import vibrator from '@system.vibrator'
 import { onTimeChange, offTimeChange } from '../../common/clock.js'
+import pageAnim from '../../common/utils/pageAnim.js'
 
 export default {
   private: {
+    animStyle: pageAnim.enterStyle,
     state: 'wait',
     percent: 0,
     fileName: '',
@@ -149,7 +151,7 @@ export default {
             if (this.autoReturnTimer) clearTimeout(this.autoReturnTimer)
             this.autoReturnTimer = setTimeout(() => {
               if (!this.$valid) return
-              router.back()
+              pageAnim.markBack(); router.back()
             }, 2000)
             break
           case 'cancel':
@@ -180,6 +182,7 @@ export default {
   },
 
   onShow() {
+    pageAnim.playReturn(this)
     try {
       // brightness 暂不可用
     } catch (e) {}
@@ -242,7 +245,7 @@ export default {
   },
 
   back() {
-    router.back()
+    pageAnim.markBack(); router.back()
   },
 
   onDestroy() {

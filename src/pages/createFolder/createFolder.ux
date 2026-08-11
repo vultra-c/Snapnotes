@@ -1,7 +1,7 @@
 <import name="input-method" src="../../components/InputMethod/InputMethod.ux"></import>
 
 <template>
-  <div class="page" style="flex-direction: column;">
+  <div class="page" style="flex-direction: column;{{animStyle}}">
 
     <!-- 文件夹名输入框预览 -->
     <div style="position: absolute; left: 12px; top: 86px; width: 312px; height: 56px; background-color: #18181A; border: 1px solid #2A2A2E; border-radius: 28px; padding: 0 24px; flex-direction: row; align-items: center;" @click="toggleKeyboard">
@@ -39,9 +39,11 @@ import prompt from '@system.prompt'
 import storage from '@system.storage'
 import dataManager from '../../common/utils/dataManager.js'
 import { onTimeChange, offTimeChange } from '../../common/clock.js'
+import pageAnim from '../../common/utils/pageAnim.js'
 
 export default {
   private: {
+    animStyle: pageAnim.enterStyle,
     nowTime: '00:00',
     __unsubClock: null,
     timeFormat: '24h',
@@ -146,7 +148,7 @@ export default {
           message: '文件夹已创建'
         })
         setTimeout(function() {
-          router.back()
+          pageAnim.markBack(); router.back()
         }, 500)
       } else {
         that.isCreating = false
@@ -164,11 +166,11 @@ export default {
   },
 
   goBack() {
-    router.back()
+    pageAnim.markBack(); router.back()
   },
 
   onBackPress() {
-    router.back()
+    pageAnim.markBack(); router.back()
     return true
   }
 }

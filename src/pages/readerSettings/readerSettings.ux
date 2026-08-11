@@ -1,5 +1,5 @@
 <template>
-  <div class="page" style="flex-direction: column;">
+  <div class="page" style="flex-direction: column;{{animStyle}}">
 
     <list class="list">
       <!-- 搜索分区 -->
@@ -76,9 +76,11 @@ import storage from '@system.storage'
 import dataManager from '../../common/utils/dataManager.js'
 import { onTimeChange, offTimeChange } from '../../common/clock.js'
 import appState from '../../common/utils/appState.js'
+import pageAnim from '../../common/utils/pageAnim.js'
 
 export default {
   private: {
+    animStyle: pageAnim.enterStyle,
     nowTime: '00:00',
     __unsubClock: null,
     fontSizeValue: 26,
@@ -107,9 +109,10 @@ export default {
   },
 
   onShow() {
+    pageAnim.playReturn(this)
     if (appState.needBackToReader) {
       appState.needBackToReader = false
-      router.back()
+      pageAnim.markBack(); router.back()
       return
     }
     if (!this.$valid) return
@@ -222,11 +225,11 @@ export default {
   },
 
   goBack() {
-    router.back()
+    pageAnim.markBack(); router.back()
   },
 
   onBackPress() {
-    router.back()
+    pageAnim.markBack(); router.back()
     return true
   }
 }

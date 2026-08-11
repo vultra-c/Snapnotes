@@ -1,5 +1,5 @@
 <template>
-  <div class="page" style="flex-direction: column;" @swipe="onSwipe">
+  <div class="page" style="flex-direction: column;{{animStyle}}" @swipe="onSwipe">
 
     <!-- 空状态 -->
     <div if="{{(!knowledgeSubject && allItems.length == 0) || (knowledgeSubject && ready && totalCount == 0)}}" style="position: absolute; width: 336px; height: 480px; flex-direction: column; justify-content: center; align-items: center;">
@@ -42,9 +42,11 @@ import router from '@system.router'
 import storage from '@system.storage'
 import dataManager from '../../common/utils/dataManager.js'
 import { onTimeChange, offTimeChange } from '../../common/clock.js'
+import pageAnim from '../../common/utils/pageAnim.js'
 
 export default {
   private: {
+    animStyle: pageAnim.enterStyle,
     nowTime: '00:00',
     __unsubClock: null,
     timeFormat: '24h',
@@ -115,6 +117,7 @@ export default {
   },
 
   onShow() {
+    pageAnim.playReturn(this)
     this.isNavigating = false
     this.longPressTriggered = false
     this.loadData()
@@ -343,17 +346,17 @@ export default {
   },
 
   goBack() {
-    router.back()
+    pageAnim.markBack(); router.back()
   },
 
   onSwipe(e) {
     if (e.direction === 'right') {
-      router.back()
+      pageAnim.markBack(); router.back()
     }
   },
 
   onBackPress() {
-    router.back()
+    pageAnim.markBack(); router.back()
     return true
   }
 }

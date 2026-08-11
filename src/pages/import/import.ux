@@ -1,5 +1,5 @@
 <template>
-  <div class="page" style="flex-direction: column;">
+  <div class="page" style="flex-direction: column;{{animStyle}}">
 
     <!-- 滚动容器 -->
     <scroll class="box" scroll-x="false" scroll-y="true" bounces="true">
@@ -109,9 +109,11 @@ import { onTimeChange, offTimeChange } from '../../common/clock'
 
 // 复用 extras/sample 作为本地自验假数据
 import samplePkg from '../../common/extras/sample'
+import pageAnim from '../../common/utils/pageAnim.js'
 
 export default {
   private: {
+    animStyle: pageAnim.enterStyle,
     currentTime: "00:00",
     listening: false,
     featureHint: '',
@@ -145,6 +147,7 @@ export default {
   },
 
   onShow() {
+    pageAnim.playReturn(this)
     if (!this.$valid) return
     // 刷新连接状态
     var conn = this.$app.$def.getConn ? this.$app.$def.getConn() : null
@@ -186,8 +189,13 @@ export default {
     return h + ':' + m
   },
 
+  onBackPress() {
+    pageAnim.markBack(); router.back()
+    return true
+  },
+
   goBack() {
-    router.back()
+    pageAnim.markBack(); router.back()
   },
 
   log(s) {

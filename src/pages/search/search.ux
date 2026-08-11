@@ -1,7 +1,7 @@
 <import name="input-method" src="../../components/InputMethod/InputMethod.ux"></import>
 
 <template>
-  <div class="page" style="flex-direction: column;">
+  <div class="page" style="flex-direction: column;{{animStyle}}">
 
     <!-- 搜索结果列表（键盘显示时缩小高度，给键盘腾出空间） -->
     <scroll class="box {{ !hideKeyboard ? 'box--with-keyboard' : '' }}" scroll-x="false" scroll-y="true" bounces="true" @scrollbottom="loadMore">
@@ -56,9 +56,11 @@
 <script>
 import router from '@system.router'
 import { onTimeChange, offTimeChange } from '../../common/clock'
+import pageAnim from '../../common/utils/pageAnim.js'
 
 export default {
   private: {
+    animStyle: pageAnim.enterStyle,
     textValue: '',
     hideKeyboard: true,
     searchResults: [],
@@ -209,8 +211,17 @@ export default {
     tick()
   },
 
+  onShow() {
+    pageAnim.playReturn(this)
+  },
+
+  onBackPress() {
+    pageAnim.markBack(); router.back()
+    return true
+  },
+
   goBack() {
-    router.back()
+    pageAnim.markBack(); router.back()
   },
 
   onResultClick(index) {

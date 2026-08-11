@@ -1,5 +1,5 @@
 <template>
-  <div class="page">
+  <div class="page" style="{{animStyle}}">
 
     <!-- 结构化内容滚动区域 -->
     <scroll
@@ -109,9 +109,11 @@ import storage from '@system.storage'
 import dataManager from '../../common/utils/dataManager.js'
 import { onTimeChange, offTimeChange } from '../../common/clock.js'
 import appState from '../../common/utils/appState.js'
+import pageAnim from '../../common/utils/pageAnim.js'
 
 export default {
   private: {
+    animStyle: pageAnim.enterStyle,
     nowTime: '00:00',
     __unsubClock: null,
     _saveTimer: null,
@@ -377,13 +379,14 @@ export default {
   },
 
   onShow() {
+    pageAnim.playReturn(this)
     if (!this.$valid) return
 
     // 删除内容后自动返回上级
     if (appState.refreshReader) {
       appState.refreshReader = false
       appState.isStructured = false
-      router.back()
+      pageAnim.markBack(); router.back()
       return
     }
 
@@ -676,7 +679,7 @@ export default {
   },
 
   goBack() {
-    router.back()
+    pageAnim.markBack(); router.back()
   },
 
   onSwipe(e) {
@@ -684,7 +687,7 @@ export default {
       if (!this.showSetting) {
         this.showSetting = true
       } else {
-        router.back()
+        pageAnim.markBack(); router.back()
       }
     }
   },
@@ -694,7 +697,7 @@ export default {
       this.zoomClose()
       return true
     }
-    router.back()
+    pageAnim.markBack(); router.back()
     return true
   },
 

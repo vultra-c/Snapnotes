@@ -1,7 +1,7 @@
 <import name="input-method" src="../../components/InputMethod/InputMethod.ux"></import>
 
 <template>
-  <div class="container">
+  <div class="container" style="{{animStyle}}">
 
     <!-- 对话区:绝对定位填 标题下 ~ 输入条上 的区域;键盘弹起时输入条上移,
          scroll 底部边界随之抬高(避开绝对定位贴底、不参与文档流抢占)。 -->
@@ -80,9 +80,11 @@
 import router from '@system.router'
 import prompt from '@system.prompt'
 import { onTimeChange, offTimeChange } from '../../common/clock'
+import pageAnim from '../../common/utils/pageAnim.js'
 
 export default {
   private: {
+    animStyle: pageAnim.enterStyle,
     currentTime: "00:00",
     messages: [],          // [{role:'user'|'ai'|'system', text}] 整体替换赋值保证绑定
     inputText: '',
@@ -137,8 +139,13 @@ export default {
     }
   },
 
+  onBackPress() {
+    pageAnim.markBack(); router.back()
+    return true
+  },
+
   goBack() {
-    router.back()
+    pageAnim.markBack(); router.back()
   },
 
   toggleKeyboard() {

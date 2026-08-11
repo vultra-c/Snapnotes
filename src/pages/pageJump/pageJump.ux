@@ -1,5 +1,5 @@
 <template>
-  <div class="page" style="flex-direction: column;">
+  <div class="page" style="flex-direction: column;{{animStyle}}">
 
     <!-- 预览框 -->
     <div class="preview-item" style="height: 108px; top: 86px;">
@@ -44,9 +44,11 @@ import router from '@system.router'
 import prompt from '@system.prompt'
 import { onTimeChange, offTimeChange } from '../../common/clock.js'
 import appState from '../../common/utils/appState.js'
+import pageAnim from '../../common/utils/pageAnim.js'
 
 export default {
   private: {
+    animStyle: pageAnim.enterStyle,
     nowTime: '00:00',
     __unsubClock: null,
     inputPage: '1',
@@ -94,7 +96,7 @@ export default {
       // 设置跳转目标页（转为0索引）
       appState.jumpToPage = targetPage - 1
       appState.needBackToReader = true
-      router.back()
+      pageAnim.markBack(); router.back()
       return
     }
 
@@ -109,11 +111,11 @@ export default {
   },
 
   goBack() {
-    router.back()
+    pageAnim.markBack(); router.back()
   },
 
   onBackPress() {
-    router.back()
+    pageAnim.markBack(); router.back()
     return true
   }
 }

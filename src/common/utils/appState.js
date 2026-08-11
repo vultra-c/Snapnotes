@@ -22,6 +22,10 @@ const state = {
   // 是否需要刷新列表（deleteConfirm 删除后 -> index / subfolder 重新加载）
   needRefreshList: false,
 
+  // 页面返回动画标记：子页面 router.back() 前由 pageAnim.markBack() 置位，
+  // 父页面 onShow() 中 pageAnim.playReturn() 消费，播放固件 OVER_RIGHT 转场
+  returnAnim: '',
+
   // 当前阅读路径（reader -> readerSettings / pageJump / percentJump）
   readerPath: '',
 

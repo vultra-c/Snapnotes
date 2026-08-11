@@ -1,5 +1,5 @@
 <template>
-  <div class="page" style="flex-direction: column;" @swipe="onSwipe">
+  <div class="page" style="flex-direction: column;{{animStyle}}" @swipe="onSwipe">
 
     <!-- 顶部栏 -->
     <img static src="/common/images/hd.png" style="position: absolute; left: 0px; top: 0px; width: 336px; height: 102px;" />
@@ -26,9 +26,11 @@ import app from '@system.app'
 import dataManager from '../../common/utils/dataManager.js'
 import { onTimeChange, offTimeChange } from '../../common/clock.js'
 import appState from '../../common/utils/appState.js'
+import pageAnim from '../../common/utils/pageAnim.js'
 
 export default {
   private: {
+    animStyle: pageAnim.enterStyle,
     nowTime: '00:00',
     __unsubClock: null,
     confirm: true
@@ -78,6 +80,7 @@ export default {
   },
 
   onShow() {
+    pageAnim.playReturn(this)
     this.confirm = true
   },
 
@@ -92,7 +95,7 @@ export default {
     if (this.action === 'versionError') {
       return app.terminate()
     }
-    router.back()
+    pageAnim.markBack(); router.back()
   },
 
   confirmAction() {
@@ -119,7 +122,7 @@ export default {
       } else {
         prompt.showToast({ message: '删除失败', duration: 1500 })
       }
-      router.back()
+      pageAnim.markBack(); router.back()
     } else if (this.action === 'deleteKnowledge') {
       var result = this.$app.$def.removeImportedSubject(this.name)
       if (!this.$valid) return
@@ -128,14 +131,14 @@ export default {
       } else {
         prompt.showToast({ message: '删除失败', duration: 1500 })
       }
-      router.back()
+      pageAnim.markBack(); router.back()
     } else if (this.action === 'deleteAll') {
       dataManager.deleteAll().then(function() {
         if (!this.$valid) return
         dataManager.invalidateCache()
         appState.needRefreshList = true
         prompt.showToast({ message: '已删除所有考点', duration: 1500 })
-        router.back()
+        pageAnim.markBack(); router.back()
       }.bind(this))
     } else if (this.action === 'deleteFolder') {
       dataManager.deleteFolder(this.path).then(function(success) {
@@ -147,7 +150,7 @@ export default {
         } else {
           prompt.showToast({ message: '删除失败，节点不存在或存储写入失败', duration: 1500 })
         }
-        router.back()
+        pageAnim.markBack(); router.back()
       }.bind(this))
     } else if (this.action === 'deleteContent') {
       dataManager.deleteContent(this.path).then(function(success) {
@@ -160,7 +163,7 @@ export default {
         } else {
           prompt.showToast({ message: '删除失败，节点不存在或存储写入失败', duration: 1500 })
         }
-        router.back()
+        pageAnim.markBack(); router.back()
       }.bind(this))
     }
   },

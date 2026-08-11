@@ -1,5 +1,5 @@
 <template>
-  <div class="page">
+  <div class="page" style="{{animStyle}}">
 
     <!-- 无缝模式：直接套用弦电子书 detail.ux 的 scroll 结构
          关键：scroll-top 属性绑定 + position:absolute 内容容器 + 文本按行分块渲染
@@ -75,9 +75,11 @@ import storage from '@system.storage'
 import dataManager from '../../common/utils/dataManager.js'
 import { getFormattedTimeNow } from '../../common/utils/timeUtil.js'
 import appState from '../../common/utils/appState.js'
+import pageAnim from '../../common/utils/pageAnim.js'
 
 export default {
   private: {
+    animStyle: pageAnim.enterStyle,
     nowTime: '00:00',
     timer: null,
     timeFormat: '24h',
@@ -162,11 +164,12 @@ export default {
   },
 
   onShow() {
+    pageAnim.playReturn(this)
     if (!this.$valid) return
     // 删除内容后自动返回上级
     if (appState.refreshReader) {
       appState.refreshReader = false
-      router.back()
+      pageAnim.markBack(); router.back()
       return
     }
     // initReader 还没完成（异步），第一次 onShow 直接跳过
@@ -592,7 +595,7 @@ export default {
   },
 
   goBack() {
-    router.back()
+    pageAnim.markBack(); router.back()
   },
 
   onSwipe(e) {
@@ -601,7 +604,7 @@ export default {
         this.showSetting = true
         return
       }
-      router.back()
+      pageAnim.markBack(); router.back()
     }
   },
 
@@ -610,7 +613,7 @@ export default {
       this.showSetting = true
       return true
     }
-    router.back()
+    pageAnim.markBack(); router.back()
     return true
   }
 }

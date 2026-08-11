@@ -1,5 +1,5 @@
 <template>
-  <div class="page" style="flex-direction: column;" @swipe="onSwipe">
+  <div class="page" style="flex-direction: column;{{animStyle}}" @swipe="onSwipe">
 
     <!-- 操作列表（使用静态布局，禁止上下滑动） -->
     <div class="action-list">
@@ -33,9 +33,11 @@ import router from '@system.router'
 import app from '@system.app'
 import storage from '@system.storage'
 import { onTimeChange, offTimeChange } from '../../common/clock.js'
+import pageAnim from '../../common/utils/pageAnim.js'
 
 export default {
   private: {
+    animStyle: pageAnim.enterStyle,
     nowTime: '00:00',
     __unsubClock: null,
     timeFormat: '24h',
@@ -112,18 +114,22 @@ export default {
     router.push({ uri: '/pages/push' })
   },
 
+  onShow() {
+    pageAnim.playReturn(this)
+  },
+
   goBack() {
-    router.back()
+    pageAnim.markBack(); router.back()
   },
 
   onSwipe(e) {
     if (e.direction === 'right') {
-      router.back()
+      pageAnim.markBack(); router.back()
     }
   },
 
   onBackPress() {
-    router.back()
+    pageAnim.markBack(); router.back()
     return true
   }
 }

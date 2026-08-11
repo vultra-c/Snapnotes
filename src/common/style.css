@@ -201,3 +201,32 @@
   bottom: 24px;
   border-radius: 36px;
 }
+
+/* ---------- 页面转场动画（复刻小米固件 SCR_LOAD_ANIM 屏幕转场） ----------
+ * 依据 ai-use 仓库解包逆向资料：
+ *  - 压栈进入 OVER_LEFT ：translateX(40px)->0 + opacity 0->1，320ms cubic-bezier(0.2,0,0,1)
+ *  - 返回     OVER_RIGHT：translateX(-40px)->0 + opacity 0->1，320ms cubic-bezier(0.2,0,0,1)
+ * 注意：Vela 要求 0%/100% 关键帧显式写出；animation 结束后回落到基础态（与 100% 帧一致），无需 fill-mode。
+ * 用法见 src/common/utils/pageAnim.js，页面根节点 style 绑定 {{animStyle}}。
+ */
+@keyframes vela-page-in-left {
+  0% {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0px);
+    opacity: 1;
+  }
+}
+
+@keyframes vela-page-in-right {
+  0% {
+    transform: translateX(-40px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0px);
+    opacity: 1;
+  }
+}

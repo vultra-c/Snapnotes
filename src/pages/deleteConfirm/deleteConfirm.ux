@@ -138,20 +138,28 @@ export default {
         router.back()
       }.bind(this))
     } else if (this.action === 'deleteFolder') {
-      dataManager.deleteFolder(this.path).then(function() {
+      dataManager.deleteFolder(this.path).then(function(success) {
         if (!this.$valid) return
-        dataManager.invalidateCache()
-        appState.needRefreshList = true
-        prompt.showToast({ message: '已删除文件夹', duration: 1000 })
+        if (success) {
+          dataManager.invalidateCache()
+          appState.needRefreshList = true
+          prompt.showToast({ message: '已删除文件夹', duration: 1000 })
+        } else {
+          prompt.showToast({ message: '删除失败，节点不存在或存储写入失败', duration: 1500 })
+        }
         router.back()
       }.bind(this))
     } else if (this.action === 'deleteContent') {
-      dataManager.deleteContent(this.path).then(function() {
+      dataManager.deleteContent(this.path).then(function(success) {
         if (!this.$valid) return
-        dataManager.invalidateCache()
-        appState.needRefreshList = true
-        prompt.showToast({ message: '删除成功', duration: 1000 })
-        appState.refreshReader = true
+        if (success) {
+          dataManager.invalidateCache()
+          appState.needRefreshList = true
+          prompt.showToast({ message: '删除成功', duration: 1000 })
+          appState.refreshReader = true
+        } else {
+          prompt.showToast({ message: '删除失败，节点不存在或存储写入失败', duration: 1500 })
+        }
         router.back()
       }.bind(this))
     }

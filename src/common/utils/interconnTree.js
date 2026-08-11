@@ -235,10 +235,16 @@ interconnTree.prototype.handleDeleteNode = function(payload) {
   }
 
   dataManager.deleteBluetoothNode(nodeId).then(function(result) {
-    self.send({
+    var response = {
       response: 'nodeDeleted',
-      success: !!result,
-      error: result ? undefined : '节点不存在'
+      success: !!result
+    };
+    // 成功回包不要带 undefined 字段，部分 Vela 固件会因此丢弃整个消息。
+    if (!result) response.error = '节点不存在';
+    self.send(response).then(function() {
+      console.log('[BT-Tree] nodeDeleted response sent: success=' + (!!result));
+    }, function(e) {
+      console.log('[BT-Tree] nodeDeleted response send failed: ' + e);
     });
   }, function(e) {
     self.send({
@@ -273,10 +279,16 @@ interconnTree.prototype.handleRenameNode = function(payload) {
   }
 
   dataManager.renameBluetoothNode(nodeId, newName).then(function(success) {
-    self.send({
+    var response = {
       response: 'nodeRenamed',
-      success: !!success,
-      error: success ? undefined : '节点不存在'
+      success: !!success
+    };
+    // 成功回包不要带 undefined 字段，部分 Vela 固件会因此丢弃整个消息。
+    if (!success) response.error = '节点不存在';
+    self.send(response).then(function() {
+      console.log('[BT-Tree] nodeRenamed response sent: success=' + (!!success));
+    }, function(e) {
+      console.log('[BT-Tree] nodeRenamed response send failed: ' + e);
     });
   }, function(e) {
     self.send({

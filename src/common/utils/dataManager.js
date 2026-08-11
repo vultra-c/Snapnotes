@@ -609,40 +609,43 @@ function _streamSegments(id, chunkCount, linesPerSegment) {
 // 同时删除新版分块键和旧版单键
 function _deleteBtFileKey(id) {
   return new Promise((resolve) => {
-    let pending = 1 // 旧版单键
-    const done = () => {
-      pending--
-      if (pending <= 0) resolve(true)
+    // 先读取分块数量，再一次性等待旧键、count 键和全部分块删除完成。
+    // 旧实现会在旧版单键删除完成时提前 resolve，或在读取 count 失败时永不 resolve，
+    // 导致手机端收到不可靠的删除结果。
+    const deleteKeys = (keys) => {
+      let pending = keys.length
+      if (pending === 0) {
+        resolve(true)
+        return
+      }
+      const done = () => {
+        pending--
+        if (pending <= 0) resolve(true)
+      }
+      for (let i = 0; i < keys.length; i++) {
+        storage.delete({
+          key: keys[i],
+          success: done,
+          fail: done
+        })
+      }
     }
-    // 删除旧版单键
-    storage.delete({
-      key: STORAGE_KEY_BT_FILE_PREFIX + id,
-      success: done,
-      fail: done
-    })
-    // 查找并删除新版分块键（需要先读 count）
+
     storage.get({
       key: STORAGE_KEY_BT_CHUNK_PREFIX + id + '_count',
       success: (countStr) => {
         const count = parseInt(countStr)
-        if (!count || count <= 0 || isNaN(count)) return
-        pending += count + 1 // count 个分块 + 1 个 count 键
-        // 删除 count 键
-        storage.delete({
-          key: STORAGE_KEY_BT_CHUNK_PREFIX + id + '_count',
-          success: done,
-          fail: done
-        })
-        // 删除各分块
-        for (let i = 0; i < count; i++) {
-          storage.delete({
-            key: STORAGE_KEY_BT_CHUNK_PREFIX + id + '_' + i,
-            success: done,
-            fail: done
-          })
+        const keys = [STORAGE_KEY_BT_FILE_PREFIX + id]
+        if (count > 0 && !isNaN(count)) {
+          keys.push(STORAGE_KEY_BT_CHUNK_PREFIX + id + '_count')
+          for (let i = 0; i < count; i++) {
+            keys.push(STORAGE_KEY_BT_CHUNK_PREFIX + id + '_' + i)
+          }
         }
+        deleteKeys(keys)
       },
-      fail: () => {} // 没有分块键，忽略
+      // 没有新版分块时仍需删除兼容旧版的单键。
+      fail: () => deleteKeys([STORAGE_KEY_BT_FILE_PREFIX + id])
     })
   })
 }
@@ -955,7 +958,7 @@ export default {
 
       // 蓝牙传输内容：递归删除（文件无子项，等价于删除自身 + 正文键）
       if (pathStr && pathStr.startsWith('bt_')) {
-        this.deleteBluetoothNode(pathStr).then(() => resolve(true))
+        this.deleteBluetoothNode(pathStr).then((removed) => resolve(!!removed))
         return
       }
 
@@ -972,7 +975,7 @@ export default {
     return new Promise((resolve) => {
       // 子文件夹：递归删除该文件夹及其子项
       if (pathStr && pathStr.startsWith('bt_folder_')) {
-        this.deleteBluetoothNode(pathStr).then(() => resolve(true))
+        this.deleteBluetoothNode(pathStr).then((removed) => resolve(!!removed))
         return
       }
 
@@ -1400,7 +1403,12 @@ export default {
           resolve(false)
           return
         }
-        saveBluetoothMeta(updated).then(() => {
+        saveBluetoothMeta(updated).then((saved) => {
+          if (!saved) {
+            console.error('[DM] Node rename meta save failed: ' + nodeId)
+            resolve(false)
+            return
+          }
           console.log('[DM] Node renamed: ' + nodeId + ' -> ' + newName)
           resolve(true)
         })
@@ -1454,7 +1462,12 @@ export default {
         }
         // 从 meta 中移除
         var filtered = metaList.filter(function(item) { return !toDelete[item.id] })
-        saveBluetoothMeta(filtered).then(() => {
+        saveBluetoothMeta(filtered).then((saved) => {
+          if (!saved) {
+            console.error('[DM] Node delete meta save failed: ' + nodeId)
+            resolve(false)
+            return
+          }
           // 逐个删除正文键（仅 content 类型有正文键）+ 清分页缓存
           var deleteIds = []
           for (var did in toDelete) {

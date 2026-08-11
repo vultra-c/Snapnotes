@@ -422,8 +422,29 @@ export default {
 
   _sendToPhone(obj) {
     if (!this.interconnect || !this.interconnect.send) return Promise.resolve(false)
+
+    // Vela 的 interconnect.send 支持 Promise 返回值；必须等待它完成，
+    // 否则树操作会在 BLE 实际发送前就释放手机端的串行锁。
+    // 同时过滤 undefined：部分 Vela 固件无法序列化带 undefined 属性的对象。
+    var payload = {}
+    for (var key in (obj || {})) {
+      if (obj.hasOwnProperty(key) && obj[key] !== undefined) payload[key] = obj[key]
+    }
+    if (payload.tag === 'tree') {
+      console.log('[BT-Tree] sendToPhone: ' + JSON.stringify(payload))
+    }
+
     try {
-      this.interconnect.send({ data: obj })
+      var result = this.interconnect.send({ data: payload, timeout: 1000 })
+      if (result && typeof result.then === 'function') {
+        return result.then(function() {
+          return true
+        }, function(error) {
+          console.log('interconnect.send FAIL ' + error)
+          throw error
+        })
+      }
+      // 兼容只返回 void 的旧版 Vela 运行时：调用成功即视为已提交。
       return Promise.resolve(true)
     } catch (e) {
       console.log('interconnect.send FAIL ' + e)

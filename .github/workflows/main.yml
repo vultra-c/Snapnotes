@@ -1,12 +1,12 @@
 name: Vela App Release
 
 on:
-  workflow_dispatch:            # 手动点按钮触发
+  workflow_dispatch:            # 手动点 Run workflow 触发
   push:
     branches:
-      - main                    # 每次推送/更新 main 分支源码自动打包
+      - main                    # 每次更新 main 分支源码自动打包
     tags:
-      - 'v*'                    # 打 v* 标签时也触发（可选）
+      - 'v*'                    # 打 v* 标签时也触发
 
 permissions:
   contents: write
@@ -15,10 +15,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 'lts/*'
           cache: 'npm'
@@ -39,12 +40,12 @@ jobs:
         run: aiot release
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: vela-app-release
           path: dist/*.rpk
 
-      # 只有打 tag 时才创建 GitHub Release，避免每次 push 都发一个版本
+      # 只有打 tag 时才创建 GitHub Release
       - name: Create GitHub Release (on tag only)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2

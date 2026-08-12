@@ -1,0 +1,21 @@
+services:
+  vela-emulator:
+    build:
+      context: ../..
+      dockerfile: docker/vela-emulator/Dockerfile
+    container_name: vela-emulator
+    ports:
+      - "6080:6080"
+      - "5900:5900"
+      - "5555:5555"
+    volumes:
+      - vela-sdk:/root/.vela/sdk
+      - vela-vvd:/root/.vela/vvd
+      - ../..:/workspace
+    shm_size: 2gb
+    stdin_open: true
+    tty: true
+
+volumes:
+  vela-sdk:
+  vela-vvd:

@@ -1,0 +1,11 @@
+Snapnotes Agent Sync Test
+=========================
+
+This file is delivered through the reverse-pull pipeline:
+API -> GitHub Actions (Snapnotes-android) -> commit.
+
+如果这条内容出现在 Snapnotes-android 仓库中，说明 AGENT API 同步链路已完全打通。
+验证完成后请删除本文件，并把 manifest.json 中的 files 清空：
+{
+  "files": []
+}

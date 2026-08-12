@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: vela-rpk-preview
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm run web:start
+    healthCheckPath: /api/health
+    autoDeploy: true

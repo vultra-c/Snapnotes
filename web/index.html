@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0f14">
+  <meta name="description" content="Vela Quick App RPK 在线预览工作台">
+  <title>VelaScope · RPK Preview Lab</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="VelaScope home">
+        <span class="brand-mark"><i></i><i></i><i></i></span>
+        <span><strong>VelaScope</strong><small>RPK PREVIEW LAB</small></span>
+      </a>
+      <div class="topbar-meta">
+        <span class="status-dot"></span>
+        <span>RENDER + SELF-HOST</span>
+        <span class="divider"></span>
+        <span id="serverStatus">检测运行环境…</span>
+      </div>
+    </header>
+
+    <div class="hero panel">
+      <div class="hero-copy">
+        <div class="eyebrow">VELOCITY MODE GUIDE</div>
+        <h1>两种可用路径：<br><em>浏览器秒检</em> 或 <em>真机级运行</em>。</h1>
+        <p class="muted intro">你现在看到的是可部署到 Render 的 RPK 浏览器工作台；它已经是真的可以用的包检查与交互预览。要完成和小米 IDE 一模一样的真运行，需要在你自己的服务器上启动官方 Vela 原生模拟器并嵌入到这个页面里。</p>
+      </div>
+      <div class="hero-actions">
+        <a class="action-button" href="#deploy">查看部署说明</a>
+        <a class="action-button ghost" href="/docs/true-runtime.md">打开真运行方案</a>
+      </div>
+    </div>
+
+    <main class="workspace">
+      <aside class="sidebar panel">
+        <div class="eyebrow">01 / PACKAGE</div>
+        <h2 class="panel-title">把你的<br><em>RPK</em> 放进来</h2>
+        <p class="muted intro">在浏览器里检查 Vela 快应用包，解析 manifest、页面和资源。文件不会被上传到服务器。</p>
+
+        <label class="dropzone" id="dropzone" for="rpkInput">
+          <input id="rpkInput" type="file" accept=".rpk,application/zip" hidden>
+          <span class="upload-orbit"><span>↑</span></span>
+          <strong>拖入 .rpk 文件</strong>
+          <small>或点击选择 · 最大 50 MB</small>
+        </label>
+        <div class="file-chip hidden" id="fileChip">
+          <span class="file-icon">RPK</span>
+          <span class="file-chip-copy"><strong id="fileName">—</strong><small id="fileSize">—</small></span>
+          <button class="icon-button" id="clearFile" type="button" aria-label="清除文件">×</button>
+        </div>
+
+        <div class="quick-actions">
+          <button class="action-button" id="loadDemo" type="button"><span>✦</span> 查看工作台示例</button>
+          <button class="action-button ghost" id="exportReport" type="button" disabled><span>↓</span> 导出包报告</button>
+        </div>
+
+        <div class="deploy-card" id="deploy">
+          <div class="section-label">DEPLOY</div>
+          <h3>Render 当前版本</h3>
+          <p class="empty-copy">已通过 <code>render.yaml</code> 配置：<code>npm ci</code> 安装，<code>npm run web:start</code> 启动，健康检查为 <code>/api/health</code>。</p>
+          <h3>你这台服务器上的真运行</h3>
+          <p class="empty-copy">用 <code>docker compose -f docker/vela-emulator/docker-compose.yml up -d</code> 启动真模拟器，并在页面嵌入 <code>novnc</code> 视图。详见 <a href="/docs/true-runtime.md">真运行文档</a>。</p>
+        </div>
+      </aside>
+
+      <section class="stage-column">
+        <div class="stage-heading">
+          <div><div class="eyebrow">02 / DEVICE VIEW</div><h3>Watch viewport</h3></div>
+          <div class="device-controls">
+            <button class="round-button active" data-mode="inspect" type="button" title="检查模式">◉</button>
+            <button class="round-button" data-mode="true" type="button" title="真运行模式">▶</button>
+            <button class="round-button" id="reloadPreview" type="button" title="刷新预览">↻</button>
+          </div>
+        </div>
+
+        <div class="stage panel">
+          <div class="stage-grid"></div>
+          <div class="stage-label label-left">X 000 — 336</div>
+          <div class="stage-label label-right">Y 000 — 480</div>
+          <div class="watch-wrap">
+            <div class="watch-shadow"></div>
+            <div class="watch-case">
+              <div class="watch-crown"></div>
+              <div class="watch-screen" id="watchScreen">
+                <div class="watch-status"><span>9:41</span><span>▰ ◔</span></div>
+                <div class="watch-app-mark"><span>闪</span></div>
+                <div class="watch-title" id="watchTitle">闪念小抄</div>
+                <div class="watch-subtitle" id="watchSubtitle">等待载入 RPK</div>
+                <div class="watch-cards" id="watchCards">
+                  <button class="watch-card" type="button" data-screen="files"><span>▤</span><b>文件管理</b><small>整理你的知识点</small></button>
+                  <button class="watch-card" type="button" data-screen="notes"><span>✦</span><b>闪念知识</b><small>快速浏览内容</small></button>
+                </div>
+                <div class="embedded-note hidden" id="embeddedNote">真运行面板已就绪：把本机的 noVNC 地址填入下方输入框后打开。</div>
+                <div class="watch-home-indicator"></div>
+              </div>
+            </div>
+          </div>
+          <div class="preview-badge"><span class="pulse"></span><span id="previewMode">INSPECT MODE</span></div>
+        </div>
+
+        <div class="true-runtime-form panel">
+          <div class="section-label">TRUE RUNTIME</div>
+          <label for="novncUrl">noVNC 地址</label>
+          <div class="inline-form">
+            <input id="novncUrl" placeholder="https://your-server:6080/vnc.html?autoconnect=1&resize=scale">
+            <button class="action-button" id="openNovnc" type="button">打开</button>
+          </div>
+          <p class="empty-copy">说明：真运行依赖你自己的服务器进程，不是 Render 的 Node Web Service。先启动 Docker 真机，再打开这个地址。</p>
+          <div class="console panel">
+            <div class="console-head"><span><i class="console-dot"></i> Runtime console</span><button id="clearConsole" type="button">清空</button></div>
+            <div class="console-body" id="consoleBody"><p><time>09:41:00</time><span class="log-info">INFO</span>准备解析本地 RPK…</p><p><time>09:41:01</time><span class="log-muted">READY</span>等待一个 Vela Quick App 包</p></div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="inspector panel">
+        <div class="eyebrow">03 / INSPECTOR</div>
+        <div class="inspector-title"><h3>Package anatomy</h3><span id="packageBadge">NO RPK</span></div>
+        <div class="identity-card">
+          <div class="app-avatar" id="appAvatar">V</div>
+          <div><strong id="packageName">Vela Quick App</strong><small id="packageId">未载入包</small></div>
+        </div>
+
+        <div class="stat-grid">
+          <div><small>VERSION</small><strong id="versionValue">—</strong></div>
+          <div><small>APP TYPE</small><strong id="typeValue">WATCH</strong></div>
+          <div><small>PAGES</small><strong id="pagesValue">—</strong></div>
+          <div><small>FILES</small><strong id="filesValue">—</strong></div>
+        </div>
+
+        <div class="inspector-section"><div class="section-label">MANIFEST</div><div class="manifest-list" id="manifestList"><p class="empty-copy">载入 RPK 后显示 manifest 信息</p></div></div>
+        <div class="inspector-section"><div class="section-label">ROUTES</div><div class="route-list" id="routeList"><p class="empty-copy">暂无路由</p></div></div>
+        <div class="inspector-section file-section"><div class="section-label">ARCHIVE FILES <span id="fileCount">0</span></div><div class="archive-list" id="archiveList"><p class="empty-copy">暂无文件</p></div></div>
+      </aside>
+    </main>
+
+    <footer class="footer"><span>VelaScope 0.1 · Render 浏览器工作台 + 自托管真模拟器扩展</span><span><b>336 × 480</b> target viewport</span></footer>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

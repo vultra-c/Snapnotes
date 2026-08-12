@@ -1,0 +1,127 @@
+# agent-sync — 反向拉取工作流
+#
+# 使用位置：复制本文件到 vultra-c/Snapnotes-android 仓库的
+#          .github/workflows/agent-sync.yml 后提交。
+# 触发方式：每 30 分钟一次（schedule）+ 手动触发（workflow_dispatch）。
+# 并发控制：同一时间只允许一个运行实例（新实例排队等待）。
+# 健壮性：API 不可达、返回非预期格式、无文件可更新时均优雅退出，不报错。
+
+name: agent-sync
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # 允许 GITHUB_TOKEN 写入仓库内容（检出 + 提交 + 推送）
+
+concurrency:
+  group: agent-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Fetch file list from agent API
+        id: fetch
+        env:
+          AGENT_API_URL: ${{ secrets.AGENT_API_URL }}
+          AGENT_API_KEY: ${{ secrets.AGENT_API_KEY }}
+        run: |
+          set -u
+
+          if [ -z "${AGENT_API_URL:-}" ] || [ -z "${AGENT_API_KEY:-}" ]; then
+            echo "::notice::AGENT_API_URL 或 AGENT_API_KEY 未配置，跳过本次同步"
+            exit 0
+          fi
+
+          # 最多重试 3 次
+          HTTP_CODE=0
+          for attempt in 1 2 3; do
+            HTTP_CODE=$(curl -sS --max-time 60 -o /tmp/agent-payload.json -w '%{http_code}' \
+              -H "Authorization: Bearer ${AGENT_API_KEY}" "${AGENT_API_URL}" || true)
+            if [ "$HTTP_CODE" = "200" ] && [ -s /tmp/agent-payload.json ]; then
+              break
+            fi
+            echo "::warning::Agent API 第 ${attempt} 次请求失败 (HTTP ${HTTP_CODE})"
+            sleep 10
+          done
+
+          if [ "$HTTP_CODE" != "200" ] || [ ! -s /tmp/agent-payload.json ]; then
+            echo "::notice::Agent API 不可达或返回非 200，优雅退出"
+            exit 0
+          fi
+
+          # 校验返回结构：必须是 JSON 对象且包含 files 数组
+          if ! jq -e 'type == "object" and (.files | type == "array")' /tmp/agent-payload.json >/dev/null 2>&1; then
+            echo "::notice::Agent API 返回格式非预期，优雅退出"
+            exit 0
+          fi
+
+          FILE_COUNT=$(jq '.files | length' /tmp/agent-payload.json)
+          echo "file_count=${FILE_COUNT}" >> "$GITHUB_OUTPUT"
+
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "::notice::没有需要更新的文件，优雅退出"
+            exit 0
+          fi
+
+          # 逐条解码 base64 并写入对应路径（自动创建目录）
+          jq -c '.files[]' /tmp/agent-payload.json > /tmp/agent-files.ndjson
+          i=0
+          while IFS= read -r entry; do
+            RELPATH=$(printf '%s' "$entry" | jq -r '.path // empty')
+            ENCODING=$(printf '%s' "$entry" | jq -r '.encoding // "base64"')
+
+            if [ -z "$RELPATH" ]; then
+              echo "::warning::文件条目缺少 path 字段，跳过"
+              continue
+            fi
+            if [ "$ENCODING" != "base64" ]; then
+              echo "::warning::${RELPATH} 的编码方式 ${ENCODING} 不受支持，跳过"
+              continue
+            fi
+            # 安全校验：拒绝绝对路径、反斜杠、.. 路径穿越
+            case "$RELPATH" in
+              /*|*\\*|*..*)
+                echo "::warning::不安全的路径 '${RELPATH}' 已跳过"
+                continue
+                ;;
+            esac
+
+            mkdir -p "$(dirname "$RELPATH")"
+            if ! printf '%s' "$entry" | jq -r '.content // empty' | base64 -d > "${RELPATH}"; then
+              echo "::warning::${RELPATH} base64 解码失败，已跳过"
+              rm -f "${RELPATH}"
+              continue
+            fi
+            echo "已更新 ${RELPATH}"
+            i=$((i + 1))
+          done < /tmp/agent-files.ndjson
+
+          echo "written=$i" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push
+        if: steps.fetch.outputs.file_count != '' && steps.fetch.outputs.file_count != '0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "::notice::应用 payload 后无任何变更，跳过提交"
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "chore: sync files from agent API [skip ci]"
+          git push

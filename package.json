@@ -9,7 +9,8 @@
     "start": "aiot server --watch --open-nuttx",
     "build": "aiot build",
     "release": "aiot release --enable-jsc",
-    "watch": "aiot watch --open-nuttx"
+    "watch": "aiot watch --open-nuttx",
+    "web:start": "node web/server.js"
   },
   "devDependencies": {
     "@aiot-toolkit/velasim": "^0.1.25",
